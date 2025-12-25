@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, send_file, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models import db, Generation, User
 from app.utils.generator import TextileGenerator
+from app.utils.gpu_config import get_gpu_config
 from app.websocket import socketio
 import os
 from datetime import datetime
@@ -130,7 +131,8 @@ def _process_generation(app, generation_id, prompt, style, color_1, color_2, see
                 style=style,
                 color_1=color_1,
                 color_2=color_2,
-                seed=seed
+                seed=seed,
+                image_size=app.config['IMAGE_SIZE']  # Use configured size (512 for 4GB GPU)
             )
             
             logger.info(f"Image generated with seed {actual_seed}, saving...")
@@ -312,6 +314,35 @@ def health():
         'model_loaded': model_loaded,
         'database': db_status
     }), 200
+
+
+@generation_bp.route('/gpu-status', methods=['GET'])
+def gpu_status():
+    """Get GPU status and device information
+    
+    Returns:
+        200: { gpu_available, device, device_name, memory_stats, dtype }
+    """
+    try:
+        gpu_config = get_gpu_config()
+        stats = gpu_config.get_device_stats()
+        
+        return jsonify({
+            'gpu_available': gpu_config.is_cuda_available,
+            'device': gpu_config.device,
+            'device_name': gpu_config.device_name,
+            'memory_stats': {
+                'allocated_gb': stats.get('gpu_memory_allocated_gb', 0),
+                'reserved_gb': stats.get('gpu_memory_reserved_gb', 0),
+                'total_gb': stats.get('gpu_memory_total_gb', 0),
+            } if gpu_config.is_cuda_available else None,
+            'dtype': str(gpu_config.dtype_optimized),
+            'model_loaded': get_generator().is_loaded()
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Failed to get GPU status: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 
 @generation_bp.route('/styles', methods=['GET'])

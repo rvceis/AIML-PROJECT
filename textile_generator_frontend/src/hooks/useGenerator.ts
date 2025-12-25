@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getGenerationStatus, getStyles, startGeneration } from '../services/api';
 import { startTextureGANGeneration } from '../services/api.texturegan';
 import { USE_TEXTUREGAN } from '../config/apiToggle';
-// import { socketService } from '../services/socketService';
+import { socketService } from '../services/socketService';
 import type { GenerationRequest, GenerationStatus, StyleOption } from '../types';
 import toast from 'react-hot-toast';
 
@@ -28,16 +28,46 @@ export function useGenerator() {
       .then((styles) => setState((prev) => ({ ...prev, styles })))
       .catch(() => toast.error('Unable to load styles'));
     
-    // TEMP: Disable WebSocket for TextureGAN backend
-    // socketService.connect();
-    // return () => { socketService.disconnect(); };
+    // Connect WebSocket for real-time updates (for default SDXL backend)
+    if (!USE_TEXTUREGAN) {
+      socketService.connect();
+      return () => { socketService.disconnect(); };
+    }
     return () => {};
   }, []);
 
-  // TEMP: Disable WebSocket updates for TextureGAN backend
-  // useEffect(() => { ... }, [state.pendingId]);
+  // Listen for WebSocket updates when using default backend
+  useEffect(() => {
+    if (!state.pendingId || USE_TEXTUREGAN) return;
 
-  // TEMP: Use direct HTTP for TextureGAN backend
+    const handleUpdate = (data: any) => {
+      if (data.generation_id === state.pendingId) {
+        if (data.status === 'completed' && data.data?.image_url) {
+          setState((prev) => ({
+            ...prev,
+            previewUrl: data.data.image_url,
+            loading: false,
+            status: { ...prev.status, status: 'completed' } as GenerationStatus
+          }));
+          toast.success('Pattern ready!');
+        } else if (data.status === 'failed') {
+          setState((prev) => ({ ...prev, loading: false }));
+          toast.error(data.data?.error || 'Generation failed');
+        }
+      }
+    };
+
+    socketService.on('generation_update', handleUpdate);
+    socketService.joinGeneration(state.pendingId);
+
+    return () => {
+      if (state.pendingId) {
+        socketService.leaveGeneration(state.pendingId);
+      }
+    };
+  }, [state.pendingId]);
+
+  // Use direct HTTP or WebSocket based on backend
   const generate = useCallback(async (payload: GenerationRequest) => {
     setState((prev) => ({ ...prev, loading: true, previewUrl: null }));
     try {
@@ -57,10 +87,14 @@ export function useGenerator() {
         }
         return result;
       } else {
-        // For SDXL/LoRA, just start generation and return the result (id)
+        // For SDXL/LoRA, start generation and track via WebSocket
         result = await startGeneration(payload);
-        // Do not expect image in response, just return result (should contain id)
-        setState((prev) => ({ ...prev, loading: false }));
+        setState((prev) => ({ 
+          ...prev, 
+          pendingId: result.id,
+          status: result
+        }));
+        toast.info('Generating pattern...');
         return result;
       }
     } catch (error) {

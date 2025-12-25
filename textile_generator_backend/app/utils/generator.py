@@ -14,6 +14,7 @@ import logging
 from pathlib import Path
 from typing import Optional, Tuple
 import os
+from app.utils.gpu_config import get_gpu_config
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +59,11 @@ class TextileGenerator:
         """
         self.model_id = model_id
         self.lora_path = lora_path
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.dtype_gpu = torch.float16 if self.device == "cuda" else torch.float32
+        
+        # Get GPU configuration
+        self.gpu_config = get_gpu_config()
+        self.device = self.gpu_config.device
+        self.dtype_gpu = self.gpu_config.dtype_optimized
         self.dtype_cpu = torch.float32
         
         self.pipe = None
@@ -73,6 +77,7 @@ class TextileGenerator:
         self._is_loaded = False
         
         logger.info(f"TextileGenerator initialized - Device: {self.device}, GPU dtype: {self.dtype_gpu}")
+        self.gpu_config.log_device_stats()
     
     def _apply_circular_padding_to_vae(self):
         """Apply circular padding to VAE Conv2D layers for seamless tiling"""
@@ -104,9 +109,10 @@ class TextileGenerator:
         
         try:
             logger.info(f"Loading SDXL base model from {self.model_id}...")
+            logger.info(f"Target device: {self.device}, Dtype: {self.dtype_gpu}")
             
             # Load individual components for better control
-            # 1. Load VAE
+            # 1. Load VAE to GPU with optimized dtype
             logger.info("Loading VAE...")
             self.vae = AutoencoderKL.from_pretrained(
                 self.model_id,
@@ -117,7 +123,7 @@ class TextileGenerator:
             # Apply circular padding to VAE
             self._apply_circular_padding_to_vae()
             
-            # 2. Load UNet with LoRA
+            # 2. Load UNet to GPU with optimized dtype
             logger.info("Loading UNet...")
             self.unet = UNet2DConditionModel.from_pretrained(
                 self.model_id,
@@ -137,8 +143,8 @@ class TextileGenerator:
                 )
                 logger.info("LoRA adapter loaded successfully")
             
-            # 3. Load text encoders (keep on CPU to save VRAM)
-            logger.info("Loading text encoders (CPU)...")
+            # 3. Load text encoders to CPU to save VRAM (important for 4GB GPUs)
+            logger.info("Loading text encoders (CPU to save VRAM)...")
             self.text_encoder = CLIPTextModel.from_pretrained(
                 self.model_id,
                 subfolder="text_encoder",
@@ -171,7 +177,7 @@ class TextileGenerator:
             )
             logger.info("Scheduler loaded successfully")
             
-            # Enable memory optimizations
+            # Enable memory optimizations for GPU
             if self.device == "cuda":
                 try:
                     self.unet.enable_xformers_memory_efficient_attention()
@@ -182,12 +188,35 @@ class TextileGenerator:
                 
                 # Enable gradient checkpointing for memory savings
                 self.unet.enable_gradient_checkpointing()
+                
+                # Enable attention slicing for memory efficiency (CRITICAL for 4GB GPUs)
+                try:
+                    self.unet.set_attention_slice("auto")
+                    logger.info("Attention slicing enabled for memory efficiency")
+                except Exception as e:
+                    logger.debug(f"Attention slicing not available: {e}")
+                
+                # Enable VAE tiling to reduce memory during decode (CRITICAL for 4GB GPUs)
+                try:
+                    self.vae.enable_tiling()
+                    logger.info("VAE tiling enabled for memory efficiency")
+                except Exception as e:
+                    logger.debug(f"VAE tiling not available: {e}")
+                
+                # Enable VAE slicing
+                try:
+                    self.vae.enable_slicing()
+                    logger.info("VAE slicing enabled for memory efficiency")
+                except Exception as e:
+                    logger.debug(f"VAE slicing not available: {e}")
             
             self._is_loaded = True
+            self.gpu_config.log_device_stats()
             logger.info("Model loaded successfully with circular padding for seamless patterns")
         
         except Exception as e:
             logger.error(f"Failed to load model: {str(e)}")
+            self.gpu_config.clear_gpu_cache()
             raise
     
     def is_loaded(self) -> bool:
@@ -256,7 +285,7 @@ class TextileGenerator:
                     return_tensors="pt"
                 )
                 
-                # Encode with text encoders (on CPU)
+                # Encode with text encoders (on CPU to save VRAM)
                 prompt_embeds = self.text_encoder(
                     text_inputs.input_ids.to("cpu"),
                     output_hidden_states=True
@@ -358,7 +387,7 @@ class TextileGenerator:
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
                     
                     # Compute previous noisy sample
-                    latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                    latents = self.scheduler.step(noise_pred, t, latents, generator=generator, return_dict=False)[0]
                     
                     if (i + 1) % 10 == 0:
                         logger.info(f"Denoising step {i + 1}/{num_inference_steps}")
@@ -377,6 +406,7 @@ class TextileGenerator:
                 if self.device == "cuda":
                     torch.cuda.empty_cache()
                 
+                self.gpu_config.log_device_stats()
                 logger.info(f"Pattern generated successfully (seamless with circular padding)")
                 return image, seed
         
@@ -384,6 +414,7 @@ class TextileGenerator:
             logger.error(f"Generation failed: {str(e)}")
             if self.device == "cuda":
                 torch.cuda.empty_cache()
+            self.gpu_config.log_device_stats()
             raise
     
     def _build_prompt(
@@ -432,4 +463,5 @@ class TextileGenerator:
             if self.device == "cuda":
                 torch.cuda.empty_cache()
             
-            logger.info("Model unloaded")
+            self.gpu_config.log_device_stats()
+            logger.info("Model unloaded and GPU memory cleared")

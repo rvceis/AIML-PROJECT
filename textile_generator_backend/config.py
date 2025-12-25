@@ -29,7 +29,7 @@ class Config:
     # Generation defaults
     DEFAULT_STEPS = 30
     DEFAULT_GUIDANCE = 7.5
-    IMAGE_SIZE = 1024
+    IMAGE_SIZE = 512  # Reduced to 512 for 4GB GPUs (was 1024)
     IMAGE_FORMAT = 'PNG'
     
     # SDXL Model settings
