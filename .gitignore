@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Model files (too large for GitHub)
+*.pt
+*.pth
+*.safetensors
+*.ckpt
+*.bin
+textile_generator_backend/app/models/*.pt
+textile_generator_backend/app/models/*.safetensors
+
+# Generated images
+textile_generator_backend/uploads/*.png
+textile_generator_backend/uploads/*.jpg
+textile_generator_backend/uploads/*.tiff
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node
+node_modules/
+.next/
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db

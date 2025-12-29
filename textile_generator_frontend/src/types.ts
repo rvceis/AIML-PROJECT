@@ -15,6 +15,7 @@ export interface GenerationRequest {
   seed?: number | null;
   num_inference_steps?: number;
   guidance_scale?: number;
+  reference_image?: string | null;
 }
 
 export interface GenerationStatus {

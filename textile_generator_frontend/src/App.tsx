@@ -27,6 +27,7 @@ function AppContent() {
   const [steps, setSteps] = useState(30);
   const [guidance, setGuidance] = useState(7.5);
   const [seed, setSeed] = useState<number | null>(null);
+  const [referenceImage, setReferenceImage] = useState<string | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -36,10 +37,6 @@ function AppContent() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'g') {
-        e.preventDefault();
-        onGenerate();
-      }
       if (e.key === '/' && document.activeElement?.tagName !== 'TEXTAREA') {
         e.preventDefault();
         promptRef.current?.focus();
@@ -74,6 +71,7 @@ function AppContent() {
         seed,
         num_inference_steps: safeSteps,
         guidance_scale: guidance,
+        reference_image: referenceImage,
       });
     }
   };
@@ -96,6 +94,7 @@ function AppContent() {
                 steps={steps}
                 guidance={guidance}
                 seed={seed}
+                referenceImage={referenceImage}
                 loading={loading}
                 promptRef={promptRef}
                 onPrompt={setPrompt}
@@ -105,6 +104,7 @@ function AppContent() {
                 onSteps={setSteps}
                 onGuidance={setGuidance}
                 onSeed={setSeed}
+                onReferenceImage={setReferenceImage}
                 onGenerate={onGenerate}
                 disableGenerate={!prompt || prompt.length < 3}
                 stylesLoaded={styles.length > 0}
@@ -115,9 +115,10 @@ function AppContent() {
           </div>
         </section>
 
-        <section className="py-8" id="docs">
+        {/* Docs section temporarily hidden */}
+        {/* <section className="py-8" id="docs">
           <Docs />
-        </section>
+        </section> */}
       </main>
       <Footer />
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />

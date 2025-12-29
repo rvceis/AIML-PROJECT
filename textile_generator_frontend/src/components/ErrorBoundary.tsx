@@ -20,7 +20,7 @@ export class ErrorBoundary extends React.Component<React.PropsWithChildren, Stat
       return (
         <div className="min-h-screen grid place-items-center text-center text-slate-700">
           <div className="space-y-3">
-            <p className="text-2xl font-bold text-slate-900">Unexpected error</p>
+            <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">Unexpected error</p>
             <p className="text-slate-500">Please refresh the page or try again later.</p>
           </div>
         </div>

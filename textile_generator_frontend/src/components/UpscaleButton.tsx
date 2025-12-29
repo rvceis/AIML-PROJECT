@@ -44,7 +44,7 @@ export function UpscaleButton({ generationId, currentUrl, onUpscaleComplete }: U
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-32 bg-white border border-slate-200 rounded-lg shadow-lg z-50">
+        <div className="absolute right-0 mt-2 w-32 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50">
           <button
             onClick={() => handleUpscale(2)}
             disabled={isLoading}

@@ -41,11 +41,17 @@ export function useGenerator() {
     if (!state.pendingId || USE_TEXTUREGAN) return;
 
     const handleUpdate = (data: any) => {
+      console.log('[WebSocket] Received generation_update:', data);
       if (data.generation_id === state.pendingId) {
         if (data.status === 'completed' && data.data?.image_url) {
+          // Prepend base URL if it's a relative path
+          const imageUrl = data.data.image_url.startsWith('http') 
+            ? data.data.image_url 
+            : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${data.data.image_url}`;
+          
           setState((prev) => ({
             ...prev,
-            previewUrl: data.data.image_url,
+            previewUrl: imageUrl,
             loading: false,
             status: { ...prev.status, status: 'completed' } as GenerationStatus
           }));
@@ -57,6 +63,7 @@ export function useGenerator() {
       }
     };
 
+    console.log('[WebSocket] Setting up listener for generation:', state.pendingId);
     socketService.on('generation_update', handleUpdate);
     socketService.joinGeneration(state.pendingId);
 
@@ -89,12 +96,26 @@ export function useGenerator() {
       } else {
         // For SDXL/LoRA, start generation and track via WebSocket
         result = await startGeneration(payload);
+        console.log('[API] Generation started:', result);
         setState((prev) => ({ 
           ...prev, 
           pendingId: result.id,
-          status: result
+          status: result,
+          loading: true  // Keep loading until WebSocket update
         }));
-        toast.info('Generating pattern...');
+        toast.loading('Generating pattern...', { duration: 2000 });
+        
+        // Fallback: If no WebSocket update after 5 minutes, reset loading
+        setTimeout(() => {
+          setState((prev) => {
+            if (prev.loading && prev.pendingId === result.id) {
+              console.warn('[Timeout] No WebSocket update received, resetting loading state');
+              return { ...prev, loading: false };
+            }
+            return prev;
+          });
+        }, 300000); // 5 minutes
+        
         return result;
       }
     } catch (error) {

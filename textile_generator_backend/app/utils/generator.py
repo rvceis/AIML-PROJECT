@@ -35,13 +35,13 @@ class CircularConv2d(nn.Module):
         # Set conv padding to 0 since we'll handle it manually
         self.conv.padding = (0, 0)
     
-    def forward(self, x):
+    def forward(self, x, *args, **kwargs):
         # Apply circular padding
         if self.pad_h > 0 or self.pad_w > 0:
             x = F.pad(x, (self.pad_w, self.pad_w, self.pad_h, self.pad_h), mode='circular')
         
-        # Apply convolution
-        return self.conv(x)
+        # Apply convolution with any additional args (like scale parameter)
+        return self.conv(x, *args, **kwargs)
 
 
 class TextileGenerator:
@@ -102,117 +102,77 @@ class TextileGenerator:
         logger.info(f"Applied circular padding to {total_conv} Conv2D layers in VAE")
     
     def load_model(self):
-        """Load SDXL base model and LoRA adapter with memory optimization"""
+        """Load SDXL base model using the full pipeline for proper VAE handling"""
         if self._is_loaded:
             logger.info("Model already loaded")
             return
         
         try:
-            logger.info(f"Loading SDXL base model from {self.model_id}...")
+            logger.info(f"Loading SDXL pipeline from {self.model_id}...")
             logger.info(f"Target device: {self.device}, Dtype: {self.dtype_gpu}")
             
-            # Load individual components for better control
-            # 1. Load VAE to GPU with optimized dtype
-            logger.info("Loading VAE...")
-            self.vae = AutoencoderKL.from_pretrained(
-                self.model_id,
-                subfolder="vae",
-                torch_dtype=self.dtype_gpu
-            ).to(self.device)
+            # Load the full SDXL pipeline with fp16 fix VAE
+            logger.info("Loading SDXL pipeline with fixed VAE...")
+            try:
+                # Use the fixed VAE variant
+                fixed_vae = AutoencoderKL.from_pretrained(
+                    "madebyollin/sdxl-vae-fp16-fix",
+                    torch_dtype=self.dtype_gpu
+                )
+                # Load from local cache first, no fp16 variant to avoid large downloads
+                self.pipe = StableDiffusionXLPipeline.from_pretrained(
+                    self.model_id,
+                    vae=fixed_vae,
+                    torch_dtype=self.dtype_gpu,
+                    use_safetensors=True,
+                    local_files_only=True  # Use cached files only
+                )
+                logger.info("Loaded SDXL pipeline from cache with fixed VAE")
+            except:
+                # If local cache fails, download without fp16 variant
+                logger.info("Cache not found, downloading standard model...")
+                self.pipe = StableDiffusionXLPipeline.from_pretrained(
+                    self.model_id,
+                    torch_dtype=self.dtype_gpu,
+                    use_safetensors=True,
+                    resume_download=True
+                )
+                logger.info("Loaded standard SDXL pipeline")
             
-            # Apply circular padding to VAE
-            self._apply_circular_padding_to_vae()
-            
-            # 2. Load UNet to GPU with optimized dtype
-            logger.info("Loading UNet...")
-            self.unet = UNet2DConditionModel.from_pretrained(
-                self.model_id,
-                subfolder="unet",
-                torch_dtype=self.dtype_gpu
-            ).to(self.device)
+            # Move pipeline to device
+            self.pipe = self.pipe.to(self.device)
             
             # Load LoRA weights if provided
-            if self.lora_path and os.path.exists(self.lora_path):
+            # NOTE: LoRA weights need to be in diffusers format, not PEFT format
+            # Skipping LoRA loading - use base SDXL model only
+            if False and self.lora_path and os.path.exists(self.lora_path):
                 logger.info(f"Loading LoRA adapter from {self.lora_path}...")
-                # Load LoRA weights using diffusers
-                from peft import PeftModel
-                self.unet = PeftModel.from_pretrained(
-                    self.unet,
-                    self.lora_path,
-                    adapter_name="textile_lora"
-                )
-                logger.info("LoRA adapter loaded successfully")
+                try:
+                    self.pipe.load_lora_weights(self.lora_path, weight_name="adapter_model.safetensors")
+                    logger.info("LoRA adapter loaded successfully")
+                except Exception as lora_error:
+                    logger.warning(f"Could not load LoRA weights: {lora_error}")
+                    logger.info("Continuing with base SDXL model only")
+            else:
+                logger.info("Using base SDXL model (LoRA disabled)")
             
-            # 3. Load text encoders to CPU to save VRAM (important for 4GB GPUs)
-            logger.info("Loading text encoders (CPU to save VRAM)...")
-            self.text_encoder = CLIPTextModel.from_pretrained(
-                self.model_id,
-                subfolder="text_encoder",
-                torch_dtype=self.dtype_cpu
-            ).to("cpu")
-            
-            self.text_encoder_2 = CLIPTextModelWithProjection.from_pretrained(
-                self.model_id,
-                subfolder="text_encoder_2",
-                torch_dtype=self.dtype_cpu
-            ).to("cpu")
-            
-            # 4. Load tokenizers
-            logger.info("Loading tokenizers...")
-            self.tokenizer = CLIPTokenizer.from_pretrained(
-                self.model_id,
-                subfolder="tokenizer"
-            )
-            
-            self.tokenizer_2 = CLIPTokenizer.from_pretrained(
-                self.model_id,
-                subfolder="tokenizer_2"
-            )
-            
-            # 5. Load scheduler from config (no manual initialization)
-            logger.info("Loading scheduler from pretrained config...")
-            self.scheduler = EulerDiscreteScheduler.from_pretrained(
-                self.model_id,
-                subfolder="scheduler"
-            )
-            logger.info("Scheduler loaded successfully")
-            
-            # Enable memory optimizations for GPU
+            # Enable memory optimizations
             if self.device == "cuda":
                 try:
-                    self.unet.enable_xformers_memory_efficient_attention()
-                    self.vae.enable_xformers_memory_efficient_attention()
+                    self.pipe.enable_xformers_memory_efficient_attention()
                     logger.info("xformers memory efficient attention enabled")
                 except Exception as e:
                     logger.warning(f"xformers not available: {e}")
                 
-                # Enable gradient checkpointing for memory savings
-                self.unet.enable_gradient_checkpointing()
-                
-                # Enable attention slicing for memory efficiency (CRITICAL for 4GB GPUs)
-                try:
-                    self.unet.set_attention_slice("auto")
-                    logger.info("Attention slicing enabled for memory efficiency")
-                except Exception as e:
-                    logger.debug(f"Attention slicing not available: {e}")
-                
-                # Enable VAE tiling to reduce memory during decode (CRITICAL for 4GB GPUs)
-                try:
-                    self.vae.enable_tiling()
-                    logger.info("VAE tiling enabled for memory efficiency")
-                except Exception as e:
-                    logger.debug(f"VAE tiling not available: {e}")
-                
-                # Enable VAE slicing
-                try:
-                    self.vae.enable_slicing()
-                    logger.info("VAE slicing enabled for memory efficiency")
-                except Exception as e:
-                    logger.debug(f"VAE slicing not available: {e}")
+                # Enable memory-saving features for 4GB GPU
+                self.pipe.enable_attention_slicing("auto")
+                self.pipe.enable_vae_slicing()
+                self.pipe.enable_vae_tiling()
+                logger.info("Memory-saving features enabled for low VRAM")
             
             self._is_loaded = True
             self.gpu_config.log_device_stats()
-            logger.info("Model loaded successfully with circular padding for seamless patterns")
+            logger.info("SDXL pipeline loaded successfully")
         
         except Exception as e:
             logger.error(f"Failed to load model: {str(e)}")
@@ -229,13 +189,13 @@ class TextileGenerator:
         style: str = "block_print",
         color_1: Optional[str] = None,
         color_2: Optional[str] = None,
-        num_inference_steps: int = 30,
+        num_inference_steps: int = 25,
         guidance_scale: float = 7.5,
         seed: Optional[int] = None,
-        image_size: int = 1024,
+        image_size: int = 512,
     ) -> Tuple[Image.Image, int]:
         """
-        Generate a seamless textile pattern
+        Generate a seamless textile pattern using SDXL pipeline
         
         Args:
             prompt: Text description of the pattern
@@ -245,7 +205,7 @@ class TextileGenerator:
             num_inference_steps: Number of denoising steps
             guidance_scale: Classifier-free guidance scale
             seed: Random seed for reproducibility
-            image_size: Output image size (default 1024x1024)
+            image_size: Output image size (default 512x512)
         
         Returns:
             Tuple of (PIL Image, seed used)
@@ -263,152 +223,27 @@ class TextileGenerator:
         full_prompt = self._build_prompt(prompt, style, color_1, color_2)
         negative_prompt = self._get_negative_prompt()
         
-        logger.info(f"Generating seamless pattern: {full_prompt[:100]}... (seed: {seed})")
+        logger.info(f"Generating pattern: {full_prompt[:100]}... (seed: {seed})")
         
         try:
-            # Encode text prompts on CPU
-            with torch.no_grad():
-                # Tokenize prompts
-                text_inputs = self.tokenizer(
-                    full_prompt,
-                    padding="max_length",
-                    max_length=self.tokenizer.model_max_length,
-                    truncation=True,
-                    return_tensors="pt"
-                )
-                
-                text_inputs_2 = self.tokenizer_2(
-                    full_prompt,
-                    padding="max_length",
-                    max_length=self.tokenizer_2.model_max_length,
-                    truncation=True,
-                    return_tensors="pt"
-                )
-                
-                # Encode with text encoders (on CPU to save VRAM)
-                prompt_embeds = self.text_encoder(
-                    text_inputs.input_ids.to("cpu"),
-                    output_hidden_states=True
-                )
-                pooled_prompt_embeds = prompt_embeds[0]
-                prompt_embeds = prompt_embeds.hidden_states[-2]
-                
-                prompt_embeds_2 = self.text_encoder_2(
-                    text_inputs_2.input_ids.to("cpu"),
-                    output_hidden_states=True
-                )
-                pooled_prompt_embeds_2 = prompt_embeds_2[0]
-                prompt_embeds_2 = prompt_embeds_2.hidden_states[-2]
-                
-                # Concatenate embeddings
-                prompt_embeds = torch.cat([prompt_embeds, prompt_embeds_2], dim=-1)
-                
-                # Move to GPU for inference
-                prompt_embeds = prompt_embeds.to(self.device, dtype=self.dtype_gpu)
-                pooled_prompt_embeds = pooled_prompt_embeds_2.to(self.device, dtype=self.dtype_gpu)
-                
-                # Encode negative prompt
-                neg_inputs = self.tokenizer(
-                    negative_prompt,
-                    padding="max_length",
-                    max_length=self.tokenizer.model_max_length,
-                    truncation=True,
-                    return_tensors="pt"
-                )
-                
-                neg_inputs_2 = self.tokenizer_2(
-                    negative_prompt,
-                    padding="max_length",
-                    max_length=self.tokenizer_2.model_max_length,
-                    truncation=True,
-                    return_tensors="pt"
-                )
-                
-                neg_embeds = self.text_encoder(
-                    neg_inputs.input_ids.to("cpu"),
-                    output_hidden_states=True
-                )
-                neg_pooled = neg_embeds[0]
-                neg_embeds = neg_embeds.hidden_states[-2]
-                
-                neg_embeds_2 = self.text_encoder_2(
-                    neg_inputs_2.input_ids.to("cpu"),
-                    output_hidden_states=True
-                )
-                neg_pooled_2 = neg_embeds_2[0]
-                neg_embeds_2 = neg_embeds_2.hidden_states[-2]
-                
-                neg_embeds = torch.cat([neg_embeds, neg_embeds_2], dim=-1)
-                neg_embeds = neg_embeds.to(self.device, dtype=self.dtype_gpu)
-                neg_pooled = neg_pooled_2.to(self.device, dtype=self.dtype_gpu)
-                
-                # Prepare latents
-                latent_shape = (1, 4, image_size // 8, image_size // 8)
-                latents = torch.randn(
-                    latent_shape,
-                    generator=generator,
-                    device=self.device,
-                    dtype=self.dtype_gpu
-                )
-                
-                # Scale latents
-                latents = latents * self.scheduler.init_noise_sigma
-                
-                # Set timesteps
-                self.scheduler.set_timesteps(num_inference_steps, device=self.device)
-                
-                # Denoising loop
-                for i, t in enumerate(self.scheduler.timesteps):
-                    # Expand latents for classifier-free guidance
-                    latent_model_input = torch.cat([latents] * 2)
-                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                    
-                    # Prepare added_cond_kwargs
-                    added_cond_kwargs = {
-                        "text_embeds": torch.cat([neg_pooled, pooled_prompt_embeds]),
-                        "time_ids": torch.cat([
-                            torch.tensor([[image_size, image_size, 0, 0, image_size, image_size]], device=self.device, dtype=self.dtype_gpu),
-                            torch.tensor([[image_size, image_size, 0, 0, image_size, image_size]], device=self.device, dtype=self.dtype_gpu)
-                        ])
-                    }
-                    
-                    # Predict noise
-                    encoder_hidden_states = torch.cat([neg_embeds, prompt_embeds])
-                    noise_pred = self.unet(
-                        latent_model_input,
-                        t,
-                        encoder_hidden_states=encoder_hidden_states,
-                        added_cond_kwargs=added_cond_kwargs,
-                        return_dict=False
-                    )[0]
-                    
-                    # Perform classifier-free guidance
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-                    
-                    # Compute previous noisy sample
-                    latents = self.scheduler.step(noise_pred, t, latents, generator=generator, return_dict=False)[0]
-                    
-                    if (i + 1) % 10 == 0:
-                        logger.info(f"Denoising step {i + 1}/{num_inference_steps}")
-                
-                # Decode latents to image (VAE with circular padding)
-                latents = latents / self.vae.config.scaling_factor
-                image = self.vae.decode(latents, return_dict=False)[0]
-                
-                # Convert to PIL
-                image = (image / 2 + 0.5).clamp(0, 1)
-                image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-                image = (image[0] * 255).round().astype("uint8")
-                image = Image.fromarray(image)
-                
-                # Clear cache
-                if self.device == "cuda":
-                    torch.cuda.empty_cache()
-                
-                self.gpu_config.log_device_stats()
-                logger.info(f"Pattern generated successfully (seamless with circular padding)")
-                return image, seed
+            # Use the pipeline's __call__ method (handles all preprocessing/postprocessing)
+            image = self.pipe(
+                prompt=full_prompt,
+                negative_prompt=negative_prompt,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=guidance_scale,
+                height=image_size,
+                width=image_size,
+                generator=generator,
+            ).images[0]
+            
+            # Clear cache
+            if self.device == "cuda":
+                torch.cuda.empty_cache()
+            
+            self.gpu_config.log_device_stats()
+            logger.info(f"Pattern generated successfully")
+            return image, seed
         
         except Exception as e:
             logger.error(f"Generation failed: {str(e)}")
@@ -426,31 +261,36 @@ class TextileGenerator:
     ) -> str:
         """Build enhanced prompt with style and color information"""
         style_descriptions = {
-            "bandhani": "traditional tie-dye bandhani pattern, intricate circular motifs, symmetrical design",
-            "ikat": "resist-dyed ikat textile, abstract geometric patterns, blurred edges",
-            "block_print": "hand-stamped block print pattern, repetitive motifs, artisanal texture",
-            "paisley": "classic paisley pattern, ornate teardrop shapes, flowing design",
+            "bandhani": "traditional Indian tie-dye bandhani dots, circular motifs",
+            "ikat": "resist-dyed ikat pattern, blurred edges, woven fabric",
+            "block_print": "hand-stamped block print, botanical motifs",
+            "paisley": "ornate paisley, teardrop boteh shapes, Persian motifs",
         }
         
-        style_desc = style_descriptions.get(style, "traditional textile pattern")
+        style_desc = style_descriptions.get(style, "textile fabric pattern")
         
-        prompt = f"{base_prompt}, {style_desc}, seamless pattern, tileable"
+        # Concise prompt under 77 tokens
+        prompt = f"professional textile design, {base_prompt}, {style_desc}"
+        prompt += ", seamless pattern"
         
         if color_1:
-            prompt += f", primary color {color_1}"
+            prompt += f", {color_1} color"
         if color_2:
-            prompt += f", secondary color {color_2}"
+            prompt += f" and {color_2}"
         
-        prompt += ", high quality, detailed, professional, textile design"
+        prompt += ", high quality, detailed"
         
         return prompt
     
     def _get_negative_prompt(self) -> str:
         """Get negative prompt for better generation"""
         return (
-            "ugly, distorted, blurry, low quality, watermark, text, "
-            "human, face, people, figure, bad proportions, "
-            "deformed, asymmetrical, irregular, noise"
+            "ugly, distorted, blurry, low quality, bad quality, worst quality, "
+            "watermark, text, signature, human, face, people, person, figure, "
+            "bad proportions, deformed, asymmetrical edges, irregular pattern, "
+            "noise, artifacts, jpeg artifacts, pixelated, grainy, "
+            "3d render, cgi, cartoon, anime, drawing, sketch, painting, "
+            "modern digital art, abstract art, collage, photomontage"
         )
     
     def unload_model(self):

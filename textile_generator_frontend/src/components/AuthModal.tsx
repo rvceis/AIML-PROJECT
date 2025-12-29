@@ -50,7 +50,7 @@ export function AuthModal({ open, onClose }: Props) {
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl">
+              <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white dark:bg-slate-800 p-6 text-left align-middle shadow-xl">
                 <Dialog.Title className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                   {mode === 'login' ? 'Log in' : 'Create account'}
                 </Dialog.Title>
@@ -60,7 +60,7 @@ export function AuthModal({ open, onClose }: Props) {
                   <label className="block space-y-1">
                     <span className="text-xs text-slate-500 dark:text-slate-300">Username</span>
                     <input
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 focus:border-primary-300 focus:ring-2 focus:ring-primary-500"
+                      className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 px-3 py-2 focus:border-primary-300 focus:ring-2 focus:ring-primary-500"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                     />
@@ -69,7 +69,7 @@ export function AuthModal({ open, onClose }: Props) {
                     <label className="block space-y-1">
                       <span className="text-xs text-slate-500 dark:text-slate-300">Email</span>
                       <input
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 focus:border-primary-300 focus:ring-2 focus:ring-primary-500"
+                        className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 px-3 py-2 focus:border-primary-300 focus:ring-2 focus:ring-primary-500"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                       />
@@ -79,7 +79,7 @@ export function AuthModal({ open, onClose }: Props) {
                     <span className="text-xs text-slate-500 dark:text-slate-300">Password</span>
                     <input
                       type="password"
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2 focus:border-primary-300 focus:ring-2 focus:ring-primary-500"
+                      className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 px-3 py-2 focus:border-primary-300 focus:ring-2 focus:ring-primary-500"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                     />
@@ -87,7 +87,7 @@ export function AuthModal({ open, onClose }: Props) {
                 </div>
 
                 <div className="mt-5 flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
-                  <button type="button" className="text-primary-600" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>
+                  <button type="button" className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>
                     {mode === 'login' ? 'Need an account? Register' : 'Have an account? Log in'}
                   </button>
                   <button

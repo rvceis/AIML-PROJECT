@@ -27,10 +27,17 @@ class Config:
     MODEL_PATH = os.getenv('MODEL_PATH', '../models')
     
     # Generation defaults
-    DEFAULT_STEPS = 30
-    DEFAULT_GUIDANCE = 7.5
-    IMAGE_SIZE = 512  # Reduced to 512 for 4GB GPUs (was 1024)
+    DEFAULT_STEPS = 20  # Reduced for 4GB GPU stability
+    DEFAULT_GUIDANCE = 7.5  # Balanced guidance
+    IMAGE_SIZE = 512  # Using 512 for 4GB GPU (RTX 4050)
     IMAGE_FORMAT = 'PNG'
+
+    # Captioning (BLIP) feature toggles
+    # When disabled, backend will not attempt to download/load BLIP and will skip
+    # reference image captioning, relying only on text prompts.
+    CAPTIONING_ENABLED = True  # Enable for reference image captions
+    # If enabled, set to True to only use locally cached BLIP files (no network fetch).
+    CAPTIONING_LOCAL_ONLY = False
     
     # SDXL Model settings
     SDXL_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"

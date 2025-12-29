@@ -23,7 +23,7 @@ export function DocsFixed() {
           </div>
           <span className="text-xs text-slate-500 dark:text-slate-300">Rendered markdown</span>
         </div>
-        <div className="rounded-2xl bg-white/80 border border-slate-200 p-6 overflow-y-auto max-h-[70vh]">
+        <div className="rounded-2xl bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 p-6 overflow-y-auto max-h-[70vh]">
           <article className="prose prose-slate max-w-none" dangerouslySetInnerHTML={{ __html: html }} />
         </div>
       </div>

@@ -89,5 +89,12 @@ def create_app(config_name=None):
 
 if __name__ == '__main__':
     app = create_app()
-    # Run with socketio
-    socketio.run(app, debug=True, host='0.0.0.0', port=8000, use_reloader=False)
+    # Run with socketio - use allow_unsafe_werkzeug for development
+    socketio.run(
+        app, 
+        debug=True, 
+        host='0.0.0.0', 
+        port=8000, 
+        use_reloader=False,
+        allow_unsafe_werkzeug=True
+    )

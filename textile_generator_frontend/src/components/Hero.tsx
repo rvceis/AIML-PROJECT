@@ -42,7 +42,7 @@ export function Hero() {
             </a>
             <a
               href="#gallery"
-              className="px-5 py-3 rounded-xl border border-slate-200 bg-white/80 text-slate-800 font-semibold hover:border-primary-300 hover:text-primary-600"
+              className="px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 font-semibold hover:border-primary-300 hover:text-primary-600 dark:hover:text-primary-400"
             >
               View Examples
             </a>

@@ -4,6 +4,7 @@ import { StyleSelector } from './StyleSelector';
 import { ColorPicker } from './ColorPicker';
 import { PromptInput } from './PromptInput';
 import { AdvancedOptions } from './AdvancedOptions';
+import ReferenceImageUpload from './ReferenceImageUpload';
 import { motion } from 'framer-motion';
 import type { StyleId } from '../../types';
 
@@ -15,6 +16,7 @@ interface Props {
   steps: number;
   guidance: number;
   seed: number | null;
+  referenceImage: string | null;
   loading: boolean;
   promptRef: RefObject<HTMLTextAreaElement>;
   onPrompt: (v: string) => void;
@@ -24,6 +26,7 @@ interface Props {
   onSteps: (v: number) => void;
   onGuidance: (v: number) => void;
   onSeed: (v: number | null) => void;
+  onReferenceImage: (v: string | null) => void;
   onGenerate: () => void;
   disableGenerate?: boolean;
   stylesLoaded: boolean;
@@ -38,6 +41,7 @@ export function ControlPanel(props: Props) {
     steps,
     guidance,
     seed,
+    referenceImage,
     loading,
     onPrompt,
     onStyle,
@@ -46,6 +50,7 @@ export function ControlPanel(props: Props) {
     onSteps,
     onGuidance,
     onSeed,
+    onReferenceImage,
     onGenerate,
     disableGenerate,
     stylesLoaded,
@@ -67,6 +72,7 @@ export function ControlPanel(props: Props) {
       </div>
 
       <StyleSelector value={style} onChange={onStyle} />
+      <ReferenceImageUpload onImageSelect={onReferenceImage} currentImage={referenceImage} />
       <PromptInput ref={promptRef} value={prompt} onChange={onPrompt} />
       <ColorPicker primary={primaryColor} secondary={secondaryColor} onPrimaryChange={onPrimary} onSecondaryChange={onSecondary} />
       <AdvancedOptions steps={steps} guidance={guidance} seed={seed} onStepsChange={onSteps} onGuidanceChange={onGuidance} onSeedChange={onSeed} />
@@ -75,7 +81,7 @@ export function ControlPanel(props: Props) {
         <motion.button
           type="button"
           whileTap={{ scale: 0.98 }}
-          disabled={loading || disableGenerate || !stylesLoaded}
+          disabled={disableGenerate || !stylesLoaded}
           onClick={onGenerate}
           className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary-500 to-secondary-500 text-white font-semibold py-3 shadow-lg shadow-primary-500/30 disabled:opacity-60 disabled:cursor-not-allowed"
         >

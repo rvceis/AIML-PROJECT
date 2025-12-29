@@ -2,12 +2,16 @@ from flask import Blueprint, request, jsonify, send_file, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models import db, Generation, User
 from app.utils.generator import TextileGenerator
+from app.utils.image_captioner import get_image_captioner
 from app.utils.gpu_config import get_gpu_config
 from app.websocket import socketio
 import os
 from datetime import datetime
 from threading import Thread
 import logging
+from PIL import Image
+import io
+import base64
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +25,74 @@ def get_generator():
     """Get or initialize the global generator instance"""
     global generator
     if generator is None:
-        generator = TextileGenerator()
+        # Get LoRA path from app config
+        lora_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models')
+        logger.info(f"Initializing generator with LoRA path: {lora_path}")
+        generator = TextileGenerator(lora_path=lora_path)
     return generator
+
+
+@generation_bp.route('/caption-image', methods=['POST'])
+def caption_image():
+    """Generate a prompt from a reference image using BLIP
+    
+    Body (multipart/form-data or JSON):
+        - image (file or base64): Reference image
+    
+    Returns:
+        200: { caption: str, enhanced_prompt: str }
+        400: { error: message }
+        500: { error: message }
+        503: { error: message } - Service unavailable (model not loaded)
+    """
+    try:
+        image = None
+        
+        # Check if image is uploaded as file
+        if 'image' in request.files:
+            image_file = request.files['image']
+            image = Image.open(image_file.stream).convert('RGB')
+        
+        # Check if image is sent as base64 in JSON
+        elif request.is_json:
+            data = request.get_json()
+            if 'image' in data:
+                # Decode base64 image
+                image_data = data['image']
+                if image_data.startswith('data:image'):
+                    image_data = image_data.split(',')[1]
+                image_bytes = base64.b64decode(image_data)
+                image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+        
+        if image is None:
+            return jsonify({'error': 'No image provided'}), 400
+        
+        # Respect captioning feature toggle
+        if not bool(current_app.config.get('CAPTIONING_ENABLED', False)):
+            return jsonify({
+                'error': 'Image captioning is disabled by configuration. Please enable CAPTIONING_ENABLED or use text prompts.'
+            }), 503
+
+        # Get captioner and generate caption
+        logger.info("Generating caption from reference image...")
+        try:
+            captioner = get_image_captioner()
+            caption = captioner.caption_image(image)
+            
+            return jsonify({
+                'caption': caption,
+                'enhanced_prompt': caption
+            }), 200
+        except Exception as model_error:
+            logger.error(f"Failed to load or use captioning model: {str(model_error)}")
+            return jsonify({
+                'error': 'Image captioning service is currently unavailable. The BLIP model failed to load. Please use text prompts instead.',
+                'details': str(model_error)
+            }), 503
+        
+    except Exception as e:
+        logger.error(f"Failed to caption image: {str(e)}")
+        return jsonify({'error': f'Failed to caption image: {str(e)}'}), 500
 
 
 @generation_bp.route('/generate', methods=['POST'])
@@ -48,10 +118,47 @@ def generate():
     data = request.get_json()
     
     # Validate input
-    if not data or 'prompt' not in data or 'style' not in data:
-        return jsonify({'error': 'Missing prompt and/or style'}), 400
+    if not data or 'style' not in data:
+        return jsonify({'error': 'Missing style'}), 400
     
-    prompt = data.get('prompt', '').strip()
+    # Check if we need to generate prompt from reference image
+    captioning_enabled = bool(current_app.config.get('CAPTIONING_ENABLED', False))
+    if 'reference_image' in data and data['reference_image'] and captioning_enabled:
+        try:
+            # Decode base64 reference image
+            image_data = data['reference_image']
+            if image_data.startswith('data:image'):
+                image_data = image_data.split(',')[1]
+            image_bytes = base64.b64decode(image_data)
+            reference_image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+            
+            # Generate caption from image
+            logger.info("Generating prompt from reference image...")
+            try:
+                captioner = get_image_captioner()
+                generated_prompt = captioner.caption_image(reference_image)
+                
+                # Use generated prompt or combine with user prompt
+                user_prompt = data.get('prompt', '').strip()
+                if user_prompt:
+                    prompt = f"{user_prompt}, {generated_prompt}"
+                else:
+                    prompt = generated_prompt
+            except Exception as caption_error:
+                logger.warning(f"Failed to caption image: {str(caption_error)}")
+                logger.info("Continuing without reference image captioning")
+                # Fall back to user prompt or default
+                prompt = data.get('prompt', '').strip()
+                if not prompt:
+                    return jsonify({'error': 'Image captioning failed. Please provide a text prompt.'}), 400
+        except Exception as e:
+            logger.error(f"Failed to process reference image: {str(e)}")
+            return jsonify({'error': f'Failed to process reference image: {str(e)}'}), 400
+    else:
+        prompt = data.get('prompt', '').strip()
+        if not prompt:
+            return jsonify({'error': 'Missing prompt'}), 400
+    
     style = data.get('style', '').strip().lower()
     color_1 = data.get('color_1', '').strip() or None
     color_2 = data.get('color_2', '').strip() or None
@@ -132,6 +239,8 @@ def _process_generation(app, generation_id, prompt, style, color_1, color_2, see
                 color_1=color_1,
                 color_2=color_2,
                 seed=seed,
+                num_inference_steps=app.config['DEFAULT_STEPS'],  # Use configured steps
+                guidance_scale=app.config['DEFAULT_GUIDANCE'],  # Use configured guidance
                 image_size=app.config['IMAGE_SIZE']  # Use configured size (512 for 4GB GPU)
             )
             
@@ -197,9 +306,8 @@ def _process_generation(app, generation_id, prompt, style, color_1, color_2, see
 
 
 @generation_bp.route('/history', methods=['GET'])
-@jwt_required()
 def get_history():
-    """Get generation history for authenticated user
+    """Get generation history (all generations or user-specific if authenticated)
     
     Query Parameters:
         - limit (int): Maximum number of results (default 10, max 100)
@@ -207,14 +315,7 @@ def get_history():
     
     Returns:
         200: { generations: [...] }
-        401: { error: message }
     """
-    user_id = get_jwt_identity()
-    user = User.query.get(user_id)
-    
-    if not user:
-        return jsonify({'error': 'User not found'}), 404
-    
     # Get pagination parameters
     try:
         limit = min(int(request.args.get('limit', 10)), 100)
@@ -225,9 +326,22 @@ def get_history():
     if limit < 1 or offset < 0:
         return jsonify({'error': 'Invalid pagination parameters'}), 400
     
-    # Get generations
-    generations = Generation.query.filter_by(user_id=user_id) \
-        .order_by(Generation.created_at.desc()) \
+    # Try to get user_id if authenticated (optional)
+    user_id = None
+    try:
+        user_id = get_jwt_identity()
+    except:
+        pass  # Not authenticated, show all generations
+    
+    # Get generations (filter by user if authenticated, otherwise show all completed)
+    query = Generation.query
+    if user_id:
+        query = query.filter_by(user_id=user_id)
+    else:
+        # For guests, only show completed generations
+        query = query.filter_by(status='completed')
+    
+    generations = query.order_by(Generation.created_at.desc()) \
         .limit(limit) \
         .offset(offset) \
         .all()
@@ -265,6 +379,63 @@ def get_image(filename):
         )
     except Exception as e:
         return jsonify({'error': f'Failed to serve image: {str(e)}'}), 500
+
+
+@generation_bp.route('/images/<filename>/download', methods=['GET'])
+def download_image(filename):
+    """Download image in specified format (PNG or TIFF)
+    
+    Parameters:
+        - filename (str): Image filename
+        - format (str): Output format (png or tiff)
+    
+    Returns:
+        200: Image file in requested format
+        404: { error: message }
+    """
+    # Security: prevent path traversal
+    if '..' in filename or '/' in filename or '\\' in filename:
+        return jsonify({'error': 'Invalid filename'}), 400
+    
+    filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+    
+    if not os.path.exists(filepath):
+        return jsonify({'error': 'Image not found'}), 404
+    
+    format_type = request.args.get('format', 'png').lower()
+    
+    try:
+        if format_type == 'tiff':
+            # Convert PNG to TIFF with high quality
+            from PIL import Image
+            img = Image.open(filepath)
+            
+            # Create TIFF in memory
+            import io
+            tiff_buffer = io.BytesIO()
+            img.save(tiff_buffer, format='TIFF', compression='tiff_lzw', quality=100)
+            tiff_buffer.seek(0)
+            
+            # Generate download filename
+            tiff_filename = filename.replace('.png', '.tiff')
+            
+            return send_file(
+                tiff_buffer,
+                mimetype='image/tiff',
+                as_attachment=True,
+                download_name=tiff_filename
+            )
+        else:
+            # Serve PNG as attachment
+            return send_file(
+                filepath,
+                mimetype='image/png',
+                as_attachment=True,
+                download_name=filename
+            )
+    except Exception as e:
+        logger.error(f"Failed to convert/serve image: {str(e)}")
+        return jsonify({'error': f'Failed to process image: {str(e)}'}), 500
 
 
 @generation_bp.route('/status/<int:generation_id>', methods=['GET'])

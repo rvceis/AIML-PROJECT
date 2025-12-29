@@ -65,6 +65,11 @@ export async function startGeneration(payload: GenerationRequest): Promise<Gener
   }
 }
 
+export async function captionImage(imageBase64: string): Promise<{ caption: string; enhanced_prompt: string }> {
+  const { data } = await api.post('/api/caption-image', { image: imageBase64 });
+  return data;
+}
+
 export async function getGenerationStatus(id: number): Promise<GenerationStatus> {
   const { data } = await api.get(`/api/status/${id}`);
   return data.generation;
