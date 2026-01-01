@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useState } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -33,6 +34,16 @@ export function Generator() {
     !USE_TEXTUREGAN ? generationId : null
   );
 
+  // Compute full image URL for cross-origin if needed
+  const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  const fullImageUrl = wsImageUrl && wsImageUrl.startsWith('/api/') ? backendUrl + wsImageUrl : wsImageUrl;
+
+  // Toast on image ready or error
+  useEffect(() => {
+    if (fullImageUrl) toast.success('Pattern ready!');
+    if (wsError) toast.error(wsError);
+  }, [fullImageUrl, wsError]);
+
   // Use the correct generator hook based on toggle
   const generator = USE_TEXTUREGAN ? useTextureGANGenerator() : useGenerator();
   const { styles, loading, previewUrl, status, generate, error } = generator;
@@ -67,7 +78,7 @@ export function Generator() {
           color_1: color1,
           color_2: color2,
           seed: undefined,
-          num_inference_steps: 30,
+          num_inference_steps: 15,
         });
         if (result && result.id) {
           setGenerationId(result.id);
@@ -162,16 +173,16 @@ export function Generator() {
           )}
 
           {/* Show image from WebSocket for SDXL/LoRA, or previewUrl for TextureGAN */}
-          {(!USE_TEXTUREGAN && wsImageUrl) && (
+          {(!USE_TEXTUREGAN && fullImageUrl) && (
             <>
-              <img src={wsImageUrl} alt="Generated pattern" className="w-full rounded-lg" />
+              <img src={fullImageUrl} alt="Generated pattern" className="w-full rounded-lg" />
               <div className="flex gap-3">
                 <UpscaleButton
                   generationId={generationId!}
-                  currentUrl={wsImageUrl}
+                  currentUrl={fullImageUrl}
                 />
                 <DownloadButton
-                  imageUrl={wsImageUrl}
+                  imageUrl={fullImageUrl}
                   filename={`textile_pattern_${generationId}.png`}
                 />
               </div>

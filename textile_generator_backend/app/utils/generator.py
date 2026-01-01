@@ -223,19 +223,22 @@ class TextileGenerator:
         """
         if not self._is_loaded:
             self.load_model()
-        
+
+        # Clamp num_inference_steps to 10-30 (scheduler limit, min 10 for quality)
+        num_inference_steps = max(10, min(num_inference_steps, 30))
+
         # Set seed
         if seed is None:
             seed = int(torch.randint(0, 2**31, (1,)).item())
-        
+
         generator = torch.Generator(device=self.device).manual_seed(seed)
-        
+
         # Build enhanced prompt
         full_prompt = self._build_prompt(prompt, style, color_1, color_2)
         negative_prompt = self._get_negative_prompt()
-        
-        logger.info(f"Generating seamless pattern: {full_prompt[:100]}... (seed: {seed})")
-        
+
+        logger.info(f"Generating seamless pattern: {full_prompt[:100]}... (seed: {seed}, steps: {num_inference_steps})")
+
         try:
             # Encode text prompts on CPU
             with torch.no_grad():

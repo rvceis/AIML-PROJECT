@@ -24,7 +24,7 @@ function AppContent() {
   const [style, setStyle] = useState<StyleId>('bandhani');
   const [primaryColor, setPrimaryColor] = useState('#6366F1');
   const [secondaryColor, setSecondaryColor] = useState('#EC4899');
-  const [steps, setSteps] = useState(30);
+  const [steps, setSteps] = useState(10);
   const [guidance, setGuidance] = useState(7.5);
   const [seed, setSeed] = useState<number | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
