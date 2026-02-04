@@ -8,7 +8,6 @@ import { ThemeToggle } from './ThemeToggle';
 const navigation = [
   { name: 'Generator', href: '#generator' },
   { name: 'History', href: '#history' },
-  { name: 'Docs', href: '#docs' },
 ];
 
 interface Props {
@@ -21,7 +20,7 @@ export function Header({ onLogin, onLogout, token }: Props) {
   return (
     <Disclosure as="header" className="fixed top-0 inset-x-0 z-50">
       {({ open }) => (
-        <div className="mx-auto max-w-6xl px-4 pt-3">
+        <div className="w-full px-4 pt-3">
           <div className="glass rounded-2xl px-4 py-3 flex items-center justify-between shadow-sm">
             <a href="#" className="flex items-center gap-2">
               <span className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary-500 to-secondary-500 shadow-md" />

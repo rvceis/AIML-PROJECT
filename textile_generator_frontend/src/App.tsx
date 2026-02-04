@@ -6,7 +6,6 @@ import { Preview } from './components/generator/Preview';
 import { HealthCard } from './components/HealthCard';
 import { Footer } from './components/Footer';
 import { HistoryPanel } from './components/HistoryPanel';
-import { DocsFixed as Docs } from './components/DocsFixed';
 import { AuthModal } from './components/AuthModal';
 import { useGenerator } from './hooks/useGenerator';
 import { useTextureGANGenerator } from './hooks/useTextureGANGenerator';
@@ -36,11 +35,17 @@ function AppContent() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'g') {
+      const activeEl = document.activeElement as HTMLElement | null;
+      const isTypingTarget =
+        activeEl?.tagName === 'INPUT' ||
+        activeEl?.tagName === 'TEXTAREA' ||
+        activeEl?.isContentEditable;
+
+      if (e.key === 'g' && !isTypingTarget) {
         e.preventDefault();
         onGenerate();
       }
-      if (e.key === '/' && document.activeElement?.tagName !== 'TEXTAREA') {
+      if (e.key === '/' && !isTypingTarget) {
         e.preventDefault();
         promptRef.current?.focus();
       }
@@ -85,7 +90,7 @@ function AppContent() {
         <Hero />
 
         <section className="py-10" id="generator">
-          <div className="max-w-6xl mx-auto px-4 space-y-4">
+          <div className="w-full px-4 space-y-4">
             <HealthCard />
             <div className="grid lg:grid-cols-2 gap-8 items-start">
               <ControlPanel
@@ -115,9 +120,6 @@ function AppContent() {
           </div>
         </section>
 
-        <section className="py-8" id="docs">
-          <Docs />
-        </section>
       </main>
       <Footer />
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />

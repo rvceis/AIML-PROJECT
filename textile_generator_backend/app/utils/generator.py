@@ -198,6 +198,7 @@ class TextileGenerator:
         self,
         prompt: str,
         style: str = "block_print",
+        pattern: Optional[str] = None,
         color_1: Optional[str] = None,
         color_2: Optional[str] = None,
         num_inference_steps: int = 30,
@@ -210,7 +211,8 @@ class TextileGenerator:
         
         Args:
             prompt: Text description of the pattern
-            style: Textile style (bandhani, ikat, block_print, paisley)
+            style: Textile style (bandhani, batik, ikat)
+            pattern: Pattern subgroup (e.g., leheriya, geometric_batik, etc.)
             color_1: Primary color (optional)
             color_2: Secondary color (optional)
             num_inference_steps: Number of denoising steps
@@ -234,7 +236,7 @@ class TextileGenerator:
         generator = torch.Generator(device=self.device).manual_seed(seed)
 
         # Build enhanced prompt
-        full_prompt = self._build_prompt(prompt, style, color_1, color_2)
+        full_prompt = self._build_prompt(prompt, style, pattern, color_1, color_2)
         negative_prompt = self._get_negative_prompt()
 
         logger.info(f"Generating seamless pattern: {full_prompt[:100]}... (seed: {seed}, steps: {num_inference_steps})")
@@ -393,20 +395,46 @@ class TextileGenerator:
         self,
         base_prompt: str,
         style: str,
+        pattern: Optional[str],
         color_1: Optional[str],
         color_2: Optional[str],
     ) -> str:
-        """Build enhanced prompt with style and color information"""
+        """Build enhanced prompt with style, pattern and color information"""
         style_descriptions = {
             "bandhani": "traditional tie-dye bandhani pattern, intricate circular motifs, symmetrical design",
+            "batik": "wax-resist batik pattern, traditional technique, artistic design",
             "ikat": "resist-dyed ikat textile, abstract geometric patterns, blurred edges",
-            "block_print": "hand-stamped block print pattern, repetitive motifs, artisanal texture",
-            "paisley": "classic paisley pattern, ornate teardrop shapes, flowing design",
+        }
+        
+        pattern_descriptions = {
+            # Bandhani patterns
+            "leheriya": "diagonal wavy lines, flowing movement",
+            "shikari": "hunting pattern, wildlife inspired",
+            "mothra": "circular motifs and circles",
+            "rajasthani_tie": "traditional Rajasthani tie variations",
+            "mandala": "circular mandala design, spiritual geometry",
+            # Batik patterns
+            "geometric_batik": "geometric wax patterns, angular shapes",
+            "floral_batik": "floral wax designs, botanical themes",
+            "traditional_batik": "traditional Indonesian batik, classic motifs",
+            "wax_resist": "contemporary wax resist technique",
+            "crackle": "crackle effect pattern, aged texture",
+            # Ikat patterns
+            "striped_ikat": "striped ikat pattern, linear design",
+            "diamond_ikat": "diamond shaped motifs, geometric layout",
+            "blurred_motif": "characteristic blurred edges, resist dye effect",
+            "traditional_ikat": "traditional ikat weave, classic structure",
+            "woven_pattern": "woven ikat patterns, thread interactions",
         }
         
         style_desc = style_descriptions.get(style, "traditional textile pattern")
+        pattern_desc = pattern_descriptions.get(pattern, "") if pattern else ""
         
-        prompt = f"{base_prompt}, {style_desc}, seamless pattern, tileable"
+        prompt = f"{base_prompt}, {style_desc}"
+        if pattern_desc:
+            prompt += f", {pattern_desc}"
+        
+        prompt += ", seamless pattern, tileable"
         
         if color_1:
             prompt += f", primary color {color_1}"

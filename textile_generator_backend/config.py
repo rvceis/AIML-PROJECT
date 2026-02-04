@@ -36,12 +36,44 @@ class Config:
     SDXL_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
     LORA_ADAPTER_PATH = os.path.join(MODEL_PATH, "adapter_config.json")
     
-    # Supported styles
+    # Supported styles and patterns
     SUPPORTED_STYLES = [
-        {"id": "bandhani", "name": "Bandhani", "description": "Traditional tie-dye patterns"},
-        {"id": "ikat", "name": "Ikat", "description": "Resist-dyed textile patterns"},
-        {"id": "block_print", "name": "Block Print", "description": "Hand-stamped patterns"},
-        {"id": "paisley", "name": "Paisley", "description": "Classic paisley motifs"},
+        {
+            "id": "bandhani", 
+            "name": "Bandhani", 
+            "description": "Traditional tie-dye patterns",
+            "patterns": [
+                {"id": "leheriya", "name": "Leheriya", "description": "Diagonal wavy lines"},
+                {"id": "shikari", "name": "Shikari", "description": "Hunting pattern"},
+                {"id": "mothra", "name": "Mothra", "description": "Circular motifs"},
+                {"id": "rajasthani_tie", "name": "Rajasthani Tie", "description": "Traditional tie variations"},
+                {"id": "mandala", "name": "Mandala", "description": "Circular mandala design"},
+            ]
+        },
+        {
+            "id": "batik", 
+            "name": "Batik", 
+            "description": "Wax-resist dyeing technique",
+            "patterns": [
+                {"id": "geometric_batik", "name": "Geometric", "description": "Geometric wax patterns"},
+                {"id": "floral_batik", "name": "Floral", "description": "Floral wax designs"},
+                {"id": "traditional_batik", "name": "Traditional", "description": "Traditional Indonesian batik"},
+                {"id": "wax_resist", "name": "Wax Resist", "description": "Contemporary wax resist"},
+                {"id": "crackle", "name": "Crackle", "description": "Crackle effect pattern"},
+            ]
+        },
+        {
+            "id": "ikat", 
+            "name": "Ikat", 
+            "description": "Resist-dyed textile patterns",
+            "patterns": [
+                {"id": "striped_ikat", "name": "Striped", "description": "Striped ikat pattern"},
+                {"id": "diamond_ikat", "name": "Diamond", "description": "Diamond shaped motifs"},
+                {"id": "blurred_motif", "name": "Blurred Motif", "description": "Characteristic blurred edges"},
+                {"id": "traditional_ikat", "name": "Traditional", "description": "Traditional ikat weave"},
+                {"id": "woven_pattern", "name": "Woven Pattern", "description": "Woven ikat patterns"},
+            ]
+        },
     ]
 
 

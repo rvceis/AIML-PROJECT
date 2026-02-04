@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 export function Hero() {
   return (
     <section className="pt-28 pb-16" id="hero">
-      <div className="max-w-6xl mx-auto px-4 grid lg:grid-cols-[1.1fr_0.9fr] gap-10 items-center">
+      <div className="w-full px-4 grid lg:grid-cols-[1.1fr_0.9fr] gap-10 items-center">
         <div className="space-y-6">
           <motion.h1
             initial={{ opacity: 0, y: 12 }}
@@ -22,7 +22,7 @@ export function Hero() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1, duration: 0.6 }}
-            className="text-lg text-slate-600 dark:text-slate-300 max-w-2xl"
+            className="text-lg text-slate-600 dark:text-slate-300 w-full"
           >
             Blend artisanal styles like Bandhani, Ikat, Block Print, and Paisley into pixel-perfect, tileable fabrics.
             Guided by your prompts, rendered by SDXL LoRA.

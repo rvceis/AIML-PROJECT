@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
@@ -9,9 +9,35 @@ import { useGenerator } from '../hooks/useGenerator';
 import { useGenerationStatus } from '../hooks/useGenerationStatus';
 import { UpscaleButton } from './UpscaleButton';
 import { DownloadButton } from './DownloadButton';
+import { StyleSelector } from './generator/StyleSelector';
+import { PatternSelector } from './generator/PatternSelector';
 import { motion } from 'framer-motion';
+import type { StyleId, PatternId, PatternOption } from '../types';
 
-const STYLES = ['bandhani', 'ikat', 'block_print', 'paisley'];
+const PATTERN_OPTIONS: Record<StyleId, PatternOption[]> = {
+  'bandhani': [
+    { id: 'leheriya' as PatternId, name: 'Leheriya', description: 'Diagonal wavy lines' },
+    { id: 'shikari' as PatternId, name: 'Shikari', description: 'Hunting pattern' },
+    { id: 'mothra' as PatternId, name: 'Mothra', description: 'Circular motifs' },
+    { id: 'rajasthani_tie' as PatternId, name: 'Rajasthani Tie', description: 'Traditional tie' },
+    { id: 'mandala' as PatternId, name: 'Mandala', description: 'Circular mandala' },
+  ],
+  'batik': [
+    { id: 'geometric_batik' as PatternId, name: 'Geometric', description: 'Geometric patterns' },
+    { id: 'floral_batik' as PatternId, name: 'Floral', description: 'Floral designs' },
+    { id: 'traditional_batik' as PatternId, name: 'Traditional', description: 'Indonesian batik' },
+    { id: 'wax_resist' as PatternId, name: 'Wax Resist', description: 'Wax resist' },
+    { id: 'crackle' as PatternId, name: 'Crackle', description: 'Crackle effect' },
+  ],
+  'ikat': [
+    { id: 'striped_ikat' as PatternId, name: 'Striped', description: 'Striped pattern' },
+    { id: 'diamond_ikat' as PatternId, name: 'Diamond', description: 'Diamond motifs' },
+    { id: 'blurred_motif' as PatternId, name: 'Blurred Motif', description: 'Blurred edges' },
+    { id: 'traditional_ikat' as PatternId, name: 'Traditional', description: 'Traditional weave' },
+    { id: 'woven_pattern' as PatternId, name: 'Woven Pattern', description: 'Woven patterns' },
+  ],
+};
+
 const COLORS = [
   { name: 'Red', hex: '#ff0000' },
   { name: 'Blue', hex: '#0000ff' },
@@ -24,11 +50,13 @@ const COLORS = [
 export function Generator() {
   const { token } = useAuth();
   const [prompt, setPrompt] = useState('intricate floral pattern');
-  const [style, setStyle] = useState('bandhani');
+  const [style, setStyle] = useState<StyleId>('bandhani');
+  const [pattern, setPattern] = useState<PatternId>('leheriya');
   const [color1, setColor1] = useState('#ff0000');
   const [color2, setColor2] = useState('#ffffff');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationId, setGenerationId] = useState<number | null>(null);
+  
   // WebSocket status for SDXL/LoRA backend
   const { status: wsStatus, imageUrl: wsImageUrl, error: wsError } = useGenerationStatus(
     !USE_TEXTUREGAN ? generationId : null
@@ -44,9 +72,20 @@ export function Generator() {
     if (wsError) toast.error(wsError);
   }, [fullImageUrl, wsError]);
 
+  // Update pattern when style changes
+  useEffect(() => {
+    const patterns = PATTERN_OPTIONS[style];
+    if (patterns && patterns.length > 0) {
+      setPattern(patterns[0].id);
+    }
+  }, [style]);
+
   // Use the correct generator hook based on toggle
   const generator = USE_TEXTUREGAN ? useTextureGANGenerator() : useGenerator();
   const { styles, loading, previewUrl, status, generate, error } = generator;
+
+  // Get available patterns for current style
+  const availablePatterns = useMemo(() => PATTERN_OPTIONS[style] || [], [style]);
 
   // Convert hex color to RGB array
   function hexToRgb(hex: string): [number, number, number] {
@@ -75,6 +114,7 @@ export function Generator() {
         const result = await generate({
           prompt: prompt.trim(),
           style,
+          pattern,
           color_1: color1,
           color_2: color2,
           seed: undefined,
@@ -103,34 +143,42 @@ export function Generator() {
           className="w-full h-24 p-3 border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 placeholder-slate-400 dark:placeholder-slate-500"
         />
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Style</label>
-            <select
-              value={style}
-              onChange={(e) => setStyle(e.target.value)}
-              disabled={isGenerating}
-              className="w-full p-2 border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
-            >
-              {STYLES.map(s => (
-                <option key={s} value={s}>{s.replace('_', ' ').toUpperCase()}</option>
-              ))}
-            </select>
-          </div>
+        <StyleSelector value={style} onChange={setStyle} />
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Primary Color</label>
-            <div className="flex gap-2 flex-wrap">
-              {COLORS.map(c => (
-                <button
-                  key={c.hex}
-                  onClick={() => setColor1(c.hex)}
-                  style={{ backgroundColor: c.hex }}
-                  className={`w-8 h-8 rounded border-2 ${color1 === c.hex ? 'border-slate-900 dark:border-slate-100' : 'border-slate-300 dark:border-slate-700'}`}
-                  title={c.name}
-                  disabled={isGenerating}
-                />
-              ))}
+        <PatternSelector value={pattern} onChange={setPattern} patterns={availablePatterns} />
+
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Colors</label>
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Primary Color</p>
+              <div className="flex gap-2 flex-wrap">
+                {COLORS.map(c => (
+                  <button
+                    key={c.hex}
+                    onClick={() => setColor1(c.hex)}
+                    style={{ backgroundColor: c.hex }}
+                    className={`w-8 h-8 rounded-lg border-2 transition-all ${color1 === c.hex ? 'border-slate-900 dark:border-slate-100 ring-2 ring-primary-500' : 'border-slate-300 dark:border-slate-700'}`}
+                    title={c.name}
+                    disabled={isGenerating}
+                  />
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Secondary Color</p>
+              <div className="flex gap-2 flex-wrap">
+                {COLORS.map(c => (
+                  <button
+                    key={c.hex}
+                    onClick={() => setColor2(c.hex)}
+                    style={{ backgroundColor: c.hex }}
+                    className={`w-8 h-8 rounded-lg border-2 transition-all ${color2 === c.hex ? 'border-slate-900 dark:border-slate-100 ring-2 ring-primary-500' : 'border-slate-300 dark:border-slate-700'}`}
+                    title={c.name}
+                    disabled={isGenerating}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         </div>

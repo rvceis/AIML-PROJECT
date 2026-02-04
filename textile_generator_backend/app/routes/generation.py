@@ -24,6 +24,18 @@ def get_generator():
     return generator
 
 
+@generation_bp.route('/styles', methods=['GET'])
+def get_styles():
+    """Get available textile styles and patterns
+    
+    Returns:
+        200: { styles: [...] }
+    """
+    return jsonify({
+        'styles': current_app.config['SUPPORTED_STYLES']
+    }), 200
+
+
 @generation_bp.route('/generate', methods=['POST'])
 def generate():
     """Generate a textile pattern
@@ -33,7 +45,8 @@ def generate():
     
     Body:
         - prompt (str, required): Text description of pattern
-        - style (str, required): One of bandhani, ikat, block_print, paisley
+        - style (str, required): One of bandhani, batik, ikat
+        - pattern (str, optional): Pattern subgroup
         - color_1 (str, optional): Primary color
         - color_2 (str, optional): Secondary color
         - seed (int, optional): Random seed for reproducibility
@@ -52,6 +65,7 @@ def generate():
     
     prompt = data.get('prompt', '').strip()
     style = data.get('style', '').strip().lower()
+    pattern = data.get('pattern', '').strip().lower() or None
     color_1 = data.get('color_1', '').strip() or None
     color_2 = data.get('color_2', '').strip() or None
     seed = data.get('seed')
@@ -60,10 +74,19 @@ def generate():
     if not prompt or len(prompt) < 3:
         return jsonify({'error': 'Prompt must be at least 3 characters'}), 400
     
-    # Validate style
-    valid_styles = [s['id'] for s in current_app.config['SUPPORTED_STYLES']]
-    if style not in valid_styles:
-        return jsonify({'error': f'Invalid style. Must be one of: {", ".join(valid_styles)}'}), 400
+    # Validate style and pattern
+    valid_styles = current_app.config['SUPPORTED_STYLES']
+    style_ids = [s['id'] for s in valid_styles]
+    
+    if style not in style_ids:
+        return jsonify({'error': f'Invalid style. Must be one of: {", ".join(style_ids)}'}), 400
+    
+    # Validate pattern if provided
+    if pattern:
+        style_config = next((s for s in valid_styles if s['id'] == style), None)
+        valid_patterns = [p['id'] for p in style_config.get('patterns', [])]
+        if pattern not in valid_patterns:
+            return jsonify({'error': f'Invalid pattern for {style}. Must be one of: {", ".join(valid_patterns)}'}), 400
     
     # Validate seed if provided
     if seed is not None:
@@ -98,7 +121,7 @@ def generate():
         print(f"[DEBUG] Starting thread for generation {generation.id}")
         thread = Thread(
             target=_process_generation,
-            args=(current_app._get_current_object(), generation.id, prompt, style, color_1, color_2, seed)
+            args=(current_app._get_current_object(), generation.id, prompt, style, pattern, color_1, color_2, seed)
         )
         thread.daemon = True
         thread.start()
@@ -113,7 +136,7 @@ def generate():
         return jsonify({'error': f'Generation failed: {str(e)}'}), 500
 
 
-def _process_generation(app, generation_id, prompt, style, color_1, color_2, seed):
+def _process_generation(app, generation_id, prompt, style, pattern, color_1, color_2, seed):
     """Background task to process generation"""
     print(f"[THREAD] Thread started for generation {generation_id}")
     with app.app_context():
@@ -128,6 +151,7 @@ def _process_generation(app, generation_id, prompt, style, color_1, color_2, see
             image, actual_seed = generator_instance.generate(
                 prompt=prompt,
                 style=style,
+                pattern=pattern,
                 color_1=color_1,
                 color_2=color_2,
                 seed=seed

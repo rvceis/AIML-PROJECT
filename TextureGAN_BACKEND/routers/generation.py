@@ -17,10 +17,44 @@ router = APIRouter()
 
 @router.get("/api/styles")
 async def get_styles():
-    # Return a static list of styles for frontend compatibility
+    # Return textile styles with patterns for frontend compatibility
     return {"styles": [
-        {"id": "default", "name": "Default", "description": "Default GAN style"},
-        {"id": "gan", "name": "GAN", "description": "GAN-based pattern"}
+        {
+            "id": "bandhani",
+            "name": "Bandhani",
+            "description": "Traditional tie-dye patterns",
+            "patterns": [
+                {"id": "leheriya", "name": "Leheriya", "description": "Diagonal wavy lines"},
+                {"id": "shikari", "name": "Shikari", "description": "Hunting pattern"},
+                {"id": "mothra", "name": "Mothra", "description": "Circular motifs"},
+                {"id": "rajasthani_tie", "name": "Rajasthani Tie", "description": "Traditional tie"},
+                {"id": "mandala", "name": "Mandala", "description": "Circular mandala"},
+            ]
+        },
+        {
+            "id": "batik",
+            "name": "Batik",
+            "description": "Wax-resist dyeing technique",
+            "patterns": [
+                {"id": "geometric_batik", "name": "Geometric", "description": "Geometric patterns"},
+                {"id": "floral_batik", "name": "Floral", "description": "Floral designs"},
+                {"id": "traditional_batik", "name": "Traditional", "description": "Indonesian batik"},
+                {"id": "wax_resist", "name": "Wax Resist", "description": "Wax resist"},
+                {"id": "crackle", "name": "Crackle", "description": "Crackle effect"},
+            ]
+        },
+        {
+            "id": "ikat",
+            "name": "Ikat",
+            "description": "Resist-dyed textile patterns",
+            "patterns": [
+                {"id": "striped_ikat", "name": "Striped", "description": "Striped pattern"},
+                {"id": "diamond_ikat", "name": "Diamond", "description": "Diamond motifs"},
+                {"id": "blurred_motif", "name": "Blurred Motif", "description": "Blurred edges"},
+                {"id": "traditional_ikat", "name": "Traditional", "description": "Traditional weave"},
+                {"id": "woven_pattern", "name": "Woven Pattern", "description": "Woven patterns"},
+            ]
+        }
     ]}
 
 @router.get("/api/history")
