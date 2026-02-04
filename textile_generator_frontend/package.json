@@ -9,13 +9,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@headlessui/react": "^1.7.17",
+    "@heroicons/react": "^2.0.18",
+    "@tailwindcss/typography": "^0.5.19",
     "@vitejs/plugin-react-swc": "^4.2.3",
     "axios": "^1.6.8",
+    "clsx": "^2.0.0",
     "framer-motion": "^11.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hot-toast": "^2.4.1",
-    "socket.io-client": "^4.7.5"
+    "socket.io-client": "^4.7.5",
+    "tailwind": "^4.0.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.64",
