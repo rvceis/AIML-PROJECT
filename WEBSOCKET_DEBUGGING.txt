@@ -1,0 +1,171 @@
+# WebSocket Debugging - Complete Workflow
+
+## Complete Flow That Should Happen
+
+```
+1. Frontend Click "Generate Pattern"
+   ↓
+2. [Generator] handleGenerate() called
+   ├─ Logs: [Generator] 🎬 Starting generation...
+   ├─ Calls: generate(payload)
+   ↓
+3. [useGenerator] generate() hook processes
+   ├─ Logs: [useGenerator] 🚀 Generate called with payload: {...}
+   ├─ Logs: [useGenerator] 🤖 Using SDXL/LoRA backend, calling startGeneration...
+   ├─ Calls: startGeneration(payload) via api.ts
+   ↓
+4. Frontend HTTP POST /api/generate sent
+   ├─ Logs in console: [API] startGeneration payload: {...}
+   ├─ Backend receives request
+   ↓
+5. Backend /api/generate endpoint processes
+   ├─ Creates generation record
+   ├─ Returns: { generation: { id: X, status: 'processing', ... } }
+   ├─ Starts background thread
+   ├─ Thread logs: [THREAD] Thread started for generation X
+   ↓
+6. Frontend receives response with generation.id
+   ├─ Logs: [useGenerator] ✅ startGeneration returned: {id: X, ...}
+   ├─ Calls: setGenerationId(X)
+   ├─ Logs: [Generator] 🔑 Setting generation ID: X
+   ↓
+7. [useGenerationStatus] hook triggered with generationId=X
+   ├─ Logs: [useGenerationStatus] 🔍 Hook triggered with generationId: X
+   ├─ Calls: socketService.connect()
+   ├─ After 200ms, calls: socketService.joinGeneration(X)
+   ├─ Logs: [SocketService] 🚪 Joining generation room: X
+   ├─ Emits 'join_generation' event with generation_id: X
+   ↓
+8. Backend WebSocket handler receives join_generation
+   ├─ Logs: [WS] 🚪 Client {sid} joined room: generation_X
+   ↓
+9. Backend thread finishes generating image
+   ├─ Saves image to disk
+   ├─ Updates database
+   ├─ Logs: [WEBSOCKET] Emitting generation_update for X to room generation_X
+   ├─ Calls: socketio.emit('generation_update', {...}, room=f'generation_{X}')
+   ↓
+10. Frontend WebSocket receives 'generation_update' event
+    ├─ socketService relays to listeners
+    ├─ useGenerationStatus handleUpdate() called
+    ├─ Logs: [useGenerationStatus] 📨 Received event from socketService: {...}
+    ├─ Logs: [useGenerationStatus] ✅ ID MATCH! Status: completed
+    ├─ Calls: setImageUrl(data.data.image_url)
+    ├─ Logs: [useGenerationStatus] 🖼️ Image URL found: /api/images/textile_X_Y.png
+    ↓
+11. Image displays in UI ✅
+```
+
+## Console Logs You Should See
+
+### Frontend Console
+```
+[useGenerator] 🚀 Generate called with payload: {...}
+[useGenerator] 🤖 Using SDXL/LoRA backend, calling startGeneration...
+[API] startGeneration payload: {...}
+[useGenerator] ✅ startGeneration returned: {id: 1, status: 'processing', ...}
+[Generator] 🎬 Starting generation...
+[Generator] 🔑 Setting generation ID: 1
+
+[SocketService] 📍 Initializing with URL: http://localhost:5000
+[SocketService] 🔌 Attempting connection to: http://localhost:5000
+[SocketService] ✅ Connected to WebSocket - SID: abc123xyz
+[SocketService] 📡 Using transports: websocket
+[SocketService] 🚪 Joining generation room: 1
+
+[useGenerationStatus] 🔍 Hook triggered with generationId: 1
+[useGenerationStatus] 🎬 Initializing for generation: 1
+[useGenerationStatus] 👂 Registering listener for "generation_update"
+[useGenerationStatus] ⏱️ Joining generation room (after 200ms delay): 1
+
+[SocketService] 📨 Received generation_update event: {generation_id: 1, status: 'completed', ...}
+[useGenerationStatus] 📨 Received event from socketService: {...}
+[useGenerationStatus] ✅ ID MATCH! Status: completed
+[useGenerationStatus] 🖼️ Image URL found: /api/images/textile_1_1770196542.png
+```
+
+### Backend Console
+```
+INFO:app.routes.generation:Starting background generation for ID 1 (steps: 15)
+[THREAD] Thread started for generation 1
+[WS] 🚪 Client abc123xyz joined room: generation_1
+... (generation processing logs) ...
+INFO:app.utils.lora_generator:Successfully generated batik pattern (size: 512x512)
+[WEBSOCKET] Emitting generation_update for 1 to room generation_1
+[WS] ✅ Event emitted successfully to generation_1
+```
+
+## If WebSocket Message Isn't Received
+
+Check in order:
+
+### 1. Is generation_id being set on frontend?
+Look for: `[Generator] 🔑 Setting generation ID:`
+- If NOT present: ID is not in API response
+- Check: Backend returning `{ generation: { id: X, ... } }`
+
+### 2. Is WebSocket connected?
+Look for: `[SocketService] ✅ Connected to WebSocket`
+- If NOT present: Connection failed
+- Check: Backend running on port 5000?
+- Check: VITE_API_URL=http://localhost:5000 in .env?
+
+### 3. Is join_generation event sent?
+Look for: `[SocketService] 🚪 Joining generation room:`
+- If NOT present: useGenerationStatus hook not triggered
+- Check: generationId state being set?
+
+### 4. Is backend receiving join_generation?
+Look for backend: `[WS] 🚪 Client ... joined room:`
+- If NOT present: Event not reaching backend
+- Check: WebSocket connection established?
+
+### 5. Is generation_update event being emitted?
+Look for backend: `[WEBSOCKET] Emitting generation_update`
+- If NOT present: Generation thread not completing
+- Check: Backend logs show generation completing?
+- Check: Image being saved to disk?
+
+### 6. Is frontend receiving generation_update?
+Look for: `[SocketService] 🔔 Received generation_update event:`
+- If NOT present: Event not reaching frontend listener
+- Check: Backend room name matches frontend? (should be generation_1)
+
+### 7. Is ID matching?
+Look for: `[useGenerationStatus] ✅ ID MATCH!`
+- If NOT present: ID mismatch (data.generation_id !== expected ID)
+- Check: Backend sending correct ID?
+- Check: Frontend listening to correct ID?
+
+## Test Steps
+
+1. **Open DevTools** (F12) → Console
+2. **Filter logs** to show only custom logs: Add filter in console
+3. **Generate pattern** with simple name
+4. **Watch console** for each log in sequence above
+5. **When it breaks**, note the last log and check that section
+
+## Key Files to Check
+
+| Issue | File | Check |
+|-------|------|-------|
+| Generation ID not set | `Generator.tsx` line 144+ | result.id extraction |
+| No WebSocket connection | `.env` | VITE_API_URL=http://localhost:5000 |
+| No room join | `useGenerationStatus.ts` | socketService.joinGeneration() call |
+| No event emission | `generation.py` line 237+ | socketio.emit() call |
+| Event not received | `socketService.ts` | on('generation_update') handler |
+| ID mismatch | Both | generation_id value comparison |
+
+## Quick Test
+
+Add this to browser console to manually test:
+```javascript
+// Test if WebSocket is connected
+socketService.socket?.connected
+
+// Test if listener is registered
+socketService.listeners.get('generation_update')?.length
+
+// Manually emit event to test frontend
+socketService.emit('generation_update', { generation_id: 1, status: 'completed', data: { image_url: '/api/images/test.png' } })
+```

@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, send_file, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models import db, Generation, User
-from app.utils.generator import TextileGenerator
+from app.utils.lora_generator import LoRATextileGenerator
 from app.websocket import socketio
 import os
 from datetime import datetime
@@ -12,15 +12,21 @@ logger = logging.getLogger(__name__)
 
 generation_bp = Blueprint('generation', __name__, url_prefix='/api')
 
-# Global generator instance
+# Global generator instance (using LoRA-based generator)
 generator = None
 
 
 def get_generator():
-    """Get or initialize the global generator instance"""
+    """Get or initialize the global LoRA generator instance"""
     global generator
     if generator is None:
-        generator = TextileGenerator()
+        # Initialize LoRA generator with path to trained models
+        lora_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            'textile_loras_trained'
+        )
+        logger.info(f"Initializing LoRA generator with path: {lora_path}")
+        generator = LoRATextileGenerator(lora_base_path=lora_path)
     return generator
 
 
@@ -69,6 +75,9 @@ def generate():
     color_1 = data.get('color_1', '').strip() or None
     color_2 = data.get('color_2', '').strip() or None
     seed = data.get('seed')
+    num_inference_steps = data.get('num_inference_steps') or current_app.config['DEFAULT_STEPS']
+    reference_image = data.get('reference_image') or None  # Base64 encoded image
+    strength = data.get('strength', 0.7) if reference_image else None
     
     # Validate prompt
     if not prompt or len(prompt) < 3:
@@ -121,7 +130,7 @@ def generate():
         print(f"[DEBUG] Starting thread for generation {generation.id}")
         thread = Thread(
             target=_process_generation,
-            args=(current_app._get_current_object(), generation.id, prompt, style, pattern, color_1, color_2, seed)
+            args=(current_app._get_current_object(), generation.id, prompt, style, pattern, color_1, color_2, seed, reference_image, strength, num_inference_steps)
         )
         thread.daemon = True
         thread.start()
@@ -136,26 +145,70 @@ def generate():
         return jsonify({'error': f'Generation failed: {str(e)}'}), 500
 
 
-def _process_generation(app, generation_id, prompt, style, pattern, color_1, color_2, seed):
-    """Background task to process generation"""
+def _process_generation(app, generation_id, prompt, style, pattern, color_1, color_2, seed, reference_image=None, strength=0.7, num_inference_steps=None):
+    """Background task to process generation with optional img2img"""
     print(f"[THREAD] Thread started for generation {generation_id}")
     with app.app_context():
-        logger.info(f"Starting background generation for ID {generation_id}")
+        if num_inference_steps is None:
+            num_inference_steps = app.config['DEFAULT_STEPS']
+        logger.info(f"Starting background generation for ID {generation_id} (steps: {num_inference_steps})")
         print(f"[THREAD] Inside app context for generation {generation_id}")
         try:
             logger.info(f"Getting generator instance...")
             generator_instance = get_generator()
             
             logger.info(f"Starting image generation...")
-            # Generate image
-            image, actual_seed = generator_instance.generate(
-                prompt=prompt,
-                style=style,
-                pattern=pattern,
-                color_1=color_1,
-                color_2=color_2,
-                seed=seed
-            )
+            
+            # Handle img2img if reference image provided
+            if reference_image:
+                import base64
+                from io import BytesIO
+                from PIL import Image as PILImage
+                
+                # Decode base64 image
+                try:
+                    # Remove data URI prefix if present
+                    if 'data:image' in reference_image:
+                        reference_image = reference_image.split(',')[1]
+                    
+                    image_data = base64.b64decode(reference_image)
+                    ref_img = PILImage.open(BytesIO(image_data)).convert('RGB')
+                    
+                    logger.info(f"Using img2img with strength {strength}")
+                    image, actual_seed = generator_instance.generate_img2img(
+                        image=ref_img,
+                        prompt=prompt,
+                        style=style,
+                        pattern=pattern,
+                        color_1=color_1,
+                        color_2=color_2,
+                        strength=strength,
+                        num_inference_steps=num_inference_steps,
+                        seed=seed
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to process reference image: {e}, falling back to text-to-image")
+                    # Fallback to text-to-image
+                    image, actual_seed = generator_instance.generate(
+                        prompt=prompt,
+                        style=style,
+                        pattern=pattern,
+                        color_1=color_1,
+                        color_2=color_2,
+                        num_inference_steps=num_inference_steps,
+                        seed=seed
+                    )
+            else:
+                # Generate image (text-to-image)
+                image, actual_seed = generator_instance.generate(
+                    prompt=prompt,
+                    style=style,
+                    pattern=pattern,
+                    color_1=color_1,
+                    color_2=color_2,
+                    num_inference_steps=num_inference_steps,
+                    seed=seed
+                )
             
             logger.info(f"Image generated with seed {actual_seed}, saving...")
             # Save image
@@ -186,6 +239,7 @@ def _process_generation(app, generation_id, prompt, style, pattern, color_1, col
                     'status': 'completed',
                     'data': {
                         'image_url': f'/api/images/{filename}',
+                        'image_path': filename,
                         'prompt': prompt,
                         'seed': actual_seed
                     }
@@ -335,18 +389,6 @@ def health():
         'status': 'healthy' if db_status == 'ok' else 'degraded',
         'model_loaded': model_loaded,
         'database': db_status
-    }), 200
-
-
-@generation_bp.route('/styles', methods=['GET'])
-def get_styles():
-    """Get list of supported textile styles
-    
-    Returns:
-        200: { styles: [...] }
-    """
-    return jsonify({
-        'styles': current_app.config['SUPPORTED_STYLES']
     }), 200
 
 

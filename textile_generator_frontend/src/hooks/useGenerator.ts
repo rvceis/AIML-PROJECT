@@ -39,10 +39,12 @@ export function useGenerator() {
 
   // TEMP: Use direct HTTP for TextureGAN backend
   const generate = useCallback(async (payload: GenerationRequest) => {
+    console.log('[useGenerator] 🚀 Generate called with payload:', payload);
     setState((prev) => ({ ...prev, loading: true, previewUrl: null }));
     try {
       let result: any;
       if (USE_TEXTUREGAN) {
+        console.log('[useGenerator] 🎨 Using TextureGAN backend');
         result = await startTextureGANGeneration(payload);
         if (result.results && result.results[0]?.image_base64) {
           setState((prev) => ({
@@ -58,13 +60,16 @@ export function useGenerator() {
         return result;
       } else {
         // For SDXL/LoRA, just start generation and return the result (id)
+        console.log('[useGenerator] 🤖 Using SDXL/LoRA backend, calling startGeneration...');
         result = await startGeneration(payload);
+        console.log('[useGenerator] ✅ startGeneration returned:', result);
         // Do not expect image in response, just return result (should contain id)
         setState((prev) => ({ ...prev, loading: false }));
         return result;
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Generation failed';
+      console.error('[useGenerator] ❌ Error:', message);
       toast.error(message);
       setState((prev) => ({ ...prev, loading: false }));
       return null;

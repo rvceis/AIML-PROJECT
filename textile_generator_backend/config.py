@@ -24,17 +24,17 @@ class Config:
     
     # Paths
     UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
-    MODEL_PATH = os.getenv('MODEL_PATH', '../models')
+    MODEL_PATH = os.getenv('MODEL_PATH', '../textile_loras_trained')
     
     # Generation defaults
-    DEFAULT_STEPS = 30
+    DEFAULT_STEPS = 10  # Reduced for faster generation
     DEFAULT_GUIDANCE = 7.5
-    IMAGE_SIZE = 1024
+    IMAGE_SIZE = 512  # SD v1.5 default resolution
     IMAGE_FORMAT = 'PNG'
     
-    # SDXL Model settings
-    SDXL_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
-    LORA_ADAPTER_PATH = os.path.join(MODEL_PATH, "adapter_config.json")
+    # LoRA Model settings (Stable Diffusion v1.5 based)
+    BASE_MODEL_ID = "runwayml/stable-diffusion-v1-5"
+    LORA_BASE_PATH = os.path.join(os.path.dirname(__file__), '..', 'textile_loras_trained')
     
     # Supported styles and patterns
     SUPPORTED_STYLES = [

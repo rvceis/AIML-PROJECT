@@ -56,6 +56,8 @@ export function Generator() {
   const [color2, setColor2] = useState('#ffffff');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationId, setGenerationId] = useState<number | null>(null);
+  const [referenceImage, setReferenceImage] = useState<string | null>(null);
+  const [imgStrength, setImgStrength] = useState(0.7);
   
   // WebSocket status for SDXL/LoRA backend
   const { status: wsStatus, imageUrl: wsImageUrl, error: wsError } = useGenerationStatus(
@@ -63,7 +65,7 @@ export function Generator() {
   );
 
   // Compute full image URL for cross-origin if needed
-  const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const fullImageUrl = wsImageUrl && wsImageUrl.startsWith('/api/') ? backendUrl + wsImageUrl : wsImageUrl;
 
   // Toast on image ready or error
@@ -93,13 +95,38 @@ export function Generator() {
     return [parseInt(h.substring(0, 2), 16), parseInt(h.substring(2, 4), 16), parseInt(h.substring(4, 6), 16)];
   }
 
+  // Convert file to base64 string
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  const handleReferenceImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      try {
+        const base64 = await fileToBase64(file);
+        setReferenceImage(base64);
+        toast.success('Reference image loaded');
+      } catch (err) {
+        toast.error('Failed to load reference image');
+      }
+    }
+  };
+
   const handleGenerate = async () => {
+    console.log('[Generator] 🎯 handleGenerate called, USE_TEXTUREGAN:', USE_TEXTUREGAN);
     if (!prompt.trim()) {
       toast.error('Please enter a description');
       return;
     }
     // Always send color as RGB array for both backends
     if (USE_TEXTUREGAN) {
+      console.log('[Generator] 🎨 Entering TextureGAN branch');
       generate({
         prompt: prompt.trim(),
         primary_color: hexToRgb(color1),
@@ -108,8 +135,10 @@ export function Generator() {
         num_samples: 1,
       });
     } else {
+      console.log('[Generator] 🤖 Entering LoRA/SDXL branch');
       // For SDXL/LoRA, start generation and set generationId for WebSocket updates
       setIsGenerating(true);
+      console.log('[Generator] 🎬 Starting generation...');
       try {
         const result = await generate({
           prompt: prompt.trim(),
@@ -119,10 +148,18 @@ export function Generator() {
           color_2: color2,
           seed: undefined,
           num_inference_steps: 15,
+          reference_image: referenceImage || undefined,
+          strength: referenceImage ? imgStrength : undefined,
         });
+        console.log('[Generator] ✅ Generation API response:', result);
         if (result && result.id) {
+          console.log('[Generator] 🔑 Setting generation ID:', result.id);
           setGenerationId(result.id);
+        } else {
+          console.warn('[Generator] ⚠️ No ID in response:', result);
         }
+      } catch (err) {
+        console.error('[Generator] ❌ Generation error:', err);
       } finally {
         setIsGenerating(false);
       }
@@ -180,6 +217,48 @@ export function Generator() {
                 ))}
               </div>
             </div>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Reference Image (Optional)</label>
+          <div className="space-y-3">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleReferenceImageChange}
+              disabled={isGenerating}
+              className="w-full p-3 border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-lg file:mr-3 file:py-1 file:px-2 file:bg-primary-500 file:text-white file:border-0 file:rounded disabled:opacity-50"
+            />
+            {referenceImage && (
+              <div className="space-y-2">
+                <img src={referenceImage} alt="Reference" className="w-full h-32 object-cover rounded-lg" />
+                <div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Strength: {(imgStrength * 100).toFixed(0)}%</p>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={imgStrength}
+                    onChange={(e) => setImgStrength(parseFloat(e.target.value))}
+                    disabled={isGenerating}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Lower = more similar to reference, Higher = more creative</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setReferenceImage(null);
+                    setImgStrength(0.7);
+                  }}
+                  disabled={isGenerating}
+                  className="w-full py-2 px-3 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-all disabled:opacity-50 text-sm"
+                >
+                  Clear Reference
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

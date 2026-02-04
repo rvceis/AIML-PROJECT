@@ -1,15 +1,18 @@
 import { useEffect } from 'react';
 import type { RefObject } from 'react';
 import { StyleSelector } from './StyleSelector';
+import { PatternSelector } from './PatternSelector';
 import { ColorPicker } from './ColorPicker';
 import { PromptInput } from './PromptInput';
 import { AdvancedOptions } from './AdvancedOptions';
 import { motion } from 'framer-motion';
-import type { StyleId } from '../../types';
+import type { PatternId, PatternOption, StyleId } from '../../types';
 
 interface Props {
   prompt: string;
   style: StyleId;
+  pattern: PatternId;
+  patterns: PatternOption[];
   primaryColor: string;
   secondaryColor: string;
   steps: number;
@@ -19,6 +22,7 @@ interface Props {
   promptRef: RefObject<HTMLTextAreaElement>;
   onPrompt: (v: string) => void;
   onStyle: (v: StyleId) => void;
+  onPattern: (v: PatternId) => void;
   onPrimary: (v: string) => void;
   onSecondary: (v: string) => void;
   onSteps: (v: number) => void;
@@ -33,6 +37,8 @@ export function ControlPanel(props: Props) {
   const {
     prompt,
     style,
+    pattern,
+    patterns,
     primaryColor,
     secondaryColor,
     steps,
@@ -41,6 +47,7 @@ export function ControlPanel(props: Props) {
     loading,
     onPrompt,
     onStyle,
+    onPattern,
     onPrimary,
     onSecondary,
     onSteps,
@@ -67,6 +74,7 @@ export function ControlPanel(props: Props) {
       </div>
 
       <StyleSelector value={style} onChange={onStyle} />
+      <PatternSelector value={pattern} onChange={onPattern} patterns={patterns} />
       <PromptInput ref={promptRef} value={prompt} onChange={onPrompt} />
       <ColorPicker primary={primaryColor} secondary={secondaryColor} onPrimaryChange={onPrimary} onSecondaryChange={onSecondary} />
       <AdvancedOptions steps={steps} guidance={guidance} seed={seed} onStepsChange={onSteps} onGuidanceChange={onGuidance} onSeedChange={onSeed} />

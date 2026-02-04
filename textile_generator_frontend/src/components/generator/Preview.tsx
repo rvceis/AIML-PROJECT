@@ -17,7 +17,7 @@ export function Preview({ previewUrl, status, loading }: Props) {
   })();
 
   return (
-    <div className="card-surface rounded-3xl p-6 space-y-4">
+    <div className="card-surface rounded-3xl p-6 space-y-4 h-full">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-semibold text-primary-600">Preview</p>
@@ -26,7 +26,7 @@ export function Preview({ previewUrl, status, loading }: Props) {
         <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">Seamless tile</span>
       </div>
 
-      <div className="aspect-square rounded-2xl border border-slate-200 bg-white/70 overflow-hidden relative">
+      <div className="aspect-[4/3] max-h-[520px] rounded-2xl border border-slate-200 bg-white/70 overflow-hidden relative">
         {previewUrl ? (
           <motion.img
             key={previewUrl}

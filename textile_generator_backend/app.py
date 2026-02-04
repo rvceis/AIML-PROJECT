@@ -41,7 +41,7 @@ def create_app(config_name=None):
     CORS(app)
     db.init_app(app)
     JWTManager(app)
-    socketio.init_app(app)
+    socketio.init_app(app, cors_allowed_origins="*")
     
     # Register blueprints
     app.register_blueprint(auth_bp)
@@ -89,5 +89,6 @@ def create_app(config_name=None):
 
 if __name__ == '__main__':
     app = create_app()
-    # Run with socketio
-    socketio.run(app, debug=True, host='0.0.0.0', port=8000, use_reloader=False)
+    # Run with socketio on port 5000
+    port = int(os.getenv('PORT', 5000))
+    socketio.run(app, debug=True, host='0.0.0.0', port=port, use_reloader=False)

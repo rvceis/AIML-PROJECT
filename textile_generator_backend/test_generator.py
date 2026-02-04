@@ -9,7 +9,7 @@ import os
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(__file__))
 
-from app.utils.generator import TextileGenerator
+from app.utils.lora_generator import LoRATextileGenerator
 import logging
 
 # Setup logging
@@ -19,35 +19,34 @@ logging.basicConfig(
 )
 
 def test_model_loading():
-    """Test if model loads successfully"""
+    """Test if LoRA models load successfully"""
     print("\n" + "="*60)
-    print("TEXTILE PATTERN GENERATOR - MODEL TEST")
+    print("TEXTILE PATTERN GENERATOR - LORA MODEL TEST")
     print("="*60 + "\n")
     
     # Path to your LoRA weights
-    lora_path = "../models"
+    lora_path = os.path.join(os.path.dirname(__file__), "..", "textile_loras_trained")
     
     print(f"LoRA Path: {lora_path}")
     print(f"LoRA Exists: {os.path.exists(lora_path)}\n")
     
     if os.path.exists(lora_path):
-        files = os.listdir(lora_path)
-        print(f"LoRA Files: {files}\n")
+        folders = [f for f in os.listdir(lora_path) if os.path.isdir(os.path.join(lora_path, f))]
+        print(f"LoRA Folders: {folders}\n")
     
     try:
         # Initialize generator
-        print("Initializing TextileGenerator...")
-        generator = TextileGenerator(
-            model_id="stabilityai/stable-diffusion-xl-base-1.0",
-            lora_path=lora_path if os.path.exists(lora_path) else None
-        )
+        print("Initializing LoRATextileGenerator...")
+        generator = LoRATextileGenerator(lora_base_path=lora_path)
         
         print("\n" + "-"*60)
         print("Loading model (this may take several minutes)...")
         print("-"*60 + "\n")
         
-        # Load model
-        generator.load_model()
+        # Load a style to test
+        test_style = "bandhani"
+        print(f"Testing with style: {test_style}")
+        generator.load_style_pipeline(test_style)
         
         print("\n" + "="*60)
         print("✅ MODEL LOADED SUCCESSFULLY!")
@@ -55,23 +54,18 @@ def test_model_loading():
         
         print("Model Details:")
         print(f"  - Device: {generator.device}")
-        print(f"  - GPU dtype: {generator.dtype_gpu}")
-        print(f"  - CPU dtype: {generator.dtype_cpu}")
-        print(f"  - VAE loaded: {generator.vae is not None}")
-        print(f"  - UNet loaded: {generator.unet is not None}")
-        print(f"  - Text encoders: {generator.text_encoder is not None}")
+        print(f"  - dtype: {generator.dtype}")
+        print(f"  - Available styles: {', '.join(generator.available_styles)}")
+        print(f"  - Loaded styles: {', '.join(generator.get_loaded_styles())}")
         print(f"  - Circular padding: Applied to VAE Conv2D layers")
-        
-        if os.path.exists(lora_path):
-            print(f"  - LoRA adapter: Loaded from {lora_path}")
-        else:
-            print(f"  - LoRA adapter: Not found (using base SDXL)")
+        print(f"  - Base model: {generator.base_model_id}")
+        print(f"  - LoRA path: {generator.lora_base_path}")
         
         print("\n" + "="*60)
         print("READY TO GENERATE PATTERNS!")
         print("="*60 + "\n")
         
-        return True
+        return generator
     
     except Exception as e:
         print("\n" + "="*60)
@@ -80,7 +74,7 @@ def test_model_loading():
         print(f"Error: {str(e)}")
         import traceback
         traceback.print_exc()
-        return False
+        return None
 
 def test_generation():
     """Test pattern generation (optional - requires model loaded)"""
@@ -88,40 +82,41 @@ def test_generation():
     print("TESTING PATTERN GENERATION")
     print("="*60 + "\n")
     
-    lora_path = "../models"
+    lora_path = os.path.join(os.path.dirname(__file__), "..", "textile_loras_trained")
     
     try:
-        generator = TextileGenerator(
-            model_id="stabilityai/stable-diffusion-xl-base-1.0",
-            lora_path=lora_path if os.path.exists(lora_path) else None
-        )
+        generator = LoRATextileGenerator(lora_base_path=lora_path)
         
-        generator.load_model()
+        # Test all three styles
+        test_cases = [
+            ("bandhani", "vibrant red and gold with circular dots"),
+            ("batik", "intricate floral design with blue colors"),
+            ("ikat", "geometric zigzag pattern")
+        ]
         
-        print("Generating test pattern...")
-        print("  Prompt: 'intricate geometric pattern'")
-        print("  Style: bandhani")
-        print("  Steps: 20 (faster test)")
-        print()
-        
-        image, seed = generator.generate(
-            prompt="intricate geometric pattern",
-            style="bandhani",
-            num_inference_steps=20,  # Faster for testing
-            seed=42
-        )
-        
-        # Save test image
-        output_path = "test_pattern.png"
-        image.save(output_path)
+        for style, prompt in test_cases:
+            print(f"\nGenerating {style} pattern...")
+            print(f"  Prompt: '{prompt}'")
+            print(f"  Steps: 20 (faster test)")
+            
+            image, seed = generator.generate(
+                prompt=prompt,
+                style=style,
+                num_inference_steps=20,  # Faster for testing
+                seed=42
+            )
+            
+            # Save test image
+            output_path = f"test_pattern_{style}.png"
+            image.save(output_path)
+            
+            print(f"  ✅ Saved: {output_path} (size: {image.size}, seed: {seed})")
         
         print("\n" + "="*60)
-        print("✅ PATTERN GENERATED SUCCESSFULLY!")
+        print("✅ ALL PATTERNS GENERATED SUCCESSFULLY!")
         print("="*60 + "\n")
-        print(f"  - Image saved: {output_path}")
-        print(f"  - Size: {image.size}")
-        print(f"  - Seed: {seed}")
         print(f"  - Seamless: Yes (circular padding applied)")
+        print(f"  - Test images saved in current directory")
         print()
         
         return True
@@ -145,10 +140,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # Test model loading
-    success = test_model_loading()
+    generator = test_model_loading()
     
     # Optionally test generation
-    if success and args.generate:
+    if generator and args.generate:
         test_generation()
     
     print("\n" + "="*60)

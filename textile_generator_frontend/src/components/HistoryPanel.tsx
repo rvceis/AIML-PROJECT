@@ -41,9 +41,28 @@ export function HistoryPanel() {
       {!loading && items.length === 0 && <p className="text-slate-500">No items yet.</p>}
       <div className="space-y-3">
         {items.map((item) => (
-          <motion.div key={item.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white/70 px-3 py-2">
-            <div>
-              <p className="font-semibold text-slate-900">{item.prompt}</p>
+          <motion.div
+            key={item.id}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white/70 px-3 py-2"
+          >
+            <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+              {item.image_url ? (
+                <img
+                  src={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${item.image_url}`}
+                  alt={item.prompt}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="h-full w-full grid place-items-center text-[10px] text-slate-400">
+                  No Image
+                </div>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-slate-900 truncate">{item.prompt}</p>
               <p className="text-xs text-slate-500">{item.style} · {item.status}</p>
             </div>
             {item.image_url && (

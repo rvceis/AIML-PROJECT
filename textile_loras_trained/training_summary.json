@@ -1,0 +1,29 @@
+{
+  "training_date": "2026-02-04T12:58:39.674891",
+  "config": {
+    "base_model": "runwayml/stable-diffusion-v1-5",
+    "resolution": 512,
+    "lora_rank": 16,
+    "lora_alpha": 32,
+    "epochs": 4,
+    "batch_size": 2,
+    "learning_rate": 0.0001
+  },
+  "results": {
+    "bandhani": {
+      "status": "success",
+      "final_loss": 0.053121671080589294,
+      "total_steps": 392
+    },
+    "batik": {
+      "status": "success",
+      "final_loss": 0.025428395718336105,
+      "total_steps": 336
+    },
+    "ikat": {
+      "status": "success",
+      "final_loss": 0.06626845896244049,
+      "total_steps": 392
+    }
+  }
+}

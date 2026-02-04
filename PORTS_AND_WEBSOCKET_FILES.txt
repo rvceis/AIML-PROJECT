@@ -1,0 +1,99 @@
+# QUICK REFERENCE - Ports & WebSocket Files
+
+## Ports Summary
+
+| Service | Host | Port | Protocol | File |
+|---------|------|------|----------|------|
+| **Backend API + WebSocket** | 0.0.0.0 | **5000** | HTTP + Socket.IO | `app.py` |
+| **Frontend (Vite)** | localhost | **5173** | HTTP | `vite.config.ts` |
+
+## WebSocket Connection Path
+
+```
+Frontend (http://localhost:5173)
+         ↓
+Connects to: http://localhost:5000 (Socket.IO)
+         ↓
+Backend (app.py running on port 5000)
+         ↓
+WebSocket established ✅
+```
+
+## Key Files
+
+### Backend Configuration
+- **Port Setup**: `textile_generator_backend/app.py` (line 92-93)
+- **WebSocket Handler**: `textile_generator_backend/app/websocket.py`
+- **Generation Logic**: `textile_generator_backend/app/routes/generation.py`
+- **Config**: `textile_generator_backend/config.py` (DEFAULT_STEPS=15)
+
+### Frontend Configuration
+- **Socket URL**: `textile_generator_frontend/src/services/socketService.ts` (line 3)
+- **API URL**: `textile_generator_frontend/.env` → `VITE_API_URL=http://localhost:5000`
+- **Generation Component**: `textile_generator_frontend/src/components/Generator.tsx`
+- **Status Listener**: `textile_generator_frontend/src/hooks/useGenerationStatus.ts`
+
+## WebSocket Event Flow
+
+```
+1. Frontend connects to ws://localhost:5000 (Socket.IO)
+   ↓ App.py initializes socketio
+   
+2. Backend receives 'connect' event
+   ↓ websocket.py → handle_connect()
+   ↓ Emits 'connected' back to client
+   
+3. Frontend calls Generation API (HTTP POST /api/generate)
+   ↓ Backend returns generation_id
+   
+4. Frontend gets generation_id, emits 'join_generation' to WebSocket
+   ↓ websocket.py → on_join(data)
+   ↓ Joins client to room: generation_{id}
+   
+5. Backend processes generation in background thread
+   ↓ When complete, emits to room: generation_{id}
+   ↓ socketio.emit('generation_update', {...}, room=f'generation_{id}')
+   
+6. Frontend receives 'generation_update' event
+   ↓ useGenerationStatus hook → state updated
+   ↓ Image URL set → Image displays ✅
+```
+
+## Inference Steps Fix
+
+**Issue**: Config changed from 25→15 but backend still using 25
+
+**Root Cause**: Old backend process has cached config
+
+**Solution**:
+1. Kill old process: `taskkill /pid <PID> /f`
+2. Clear cache: `Get-ChildItem -Recurse -Filter __pycache__ | Remove-Item -Recurse -Force`
+3. Restart: `python app.py`
+
+**Backend now accepts steps from frontend**:
+- Frontend sends: `num_inference_steps: 15` in request
+- Backend uses frontend value OR falls back to config (DEFAULT_STEPS)
+- File: `generation.py` line 74 & 155
+
+## Test WebSocket Connection
+
+1. Open DevTools (F12) → Console
+2. Generate a pattern
+3. Look for these logs:
+   - `[SocketService] 📍 Initializing with URL: http://localhost:5000`
+   - `[SocketService] ✅ Connected to WebSocket - SID: ...`
+   - `[SocketService] 🚪 Joining generation room: X`
+   - `[useGenerationStatus] 🖼️ Image URL found: /api/images/...`
+
+4. Backend should show:
+   - `[WS] 🔌 Client connected`
+   - `[WS] 🚪 Client joined room: generation_X`
+   - `[WS] 📤 Emitting to room generation_X`
+
+## Summary
+
+- **WebSocket connects**: Frontend (5173) → Backend (5000)
+- **Config file**: `config.py` (DEFAULT_STEPS=15)
+- **WebSocket handler**: `websocket.py`
+- **Frontend URL**: `.env` (VITE_API_URL=http://localhost:5000)
+- **To fix steps**: Kill old process + restart backend
