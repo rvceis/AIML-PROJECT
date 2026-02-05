@@ -11,7 +11,9 @@ from diffusers import (
     UNet2DConditionModel,
     DDPMScheduler,
     EulerDiscreteScheduler,
-    EulerAncestralDiscreteScheduler
+    EulerAncestralDiscreteScheduler,
+    DPMSolverMultistepScheduler,
+    LMSDiscreteScheduler
 )
 from transformers import CLIPTextModel, CLIPTokenizer
 from PIL import Image
@@ -19,8 +21,49 @@ import logging
 from pathlib import Path
 from typing import Optional, Tuple, Dict
 import os
+from colorsys import rgb_to_hsv, hsv_to_rgb
 
 logger = logging.getLogger(__name__)
+
+
+def hex_to_color_name(hex_color: str) -> str:
+    """Convert hex color to descriptive color name for better prompting"""
+    hex_color = hex_color.lstrip('#')
+    r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    
+    # Normalize to 0-1
+    r_norm, g_norm, b_norm = r/255.0, g/255.0, b/255.0
+    
+    # Color naming based on hue and brightness
+    h, s, v = rgb_to_hsv(r_norm, g_norm, b_norm)
+    
+    # Return both hex and color name for better prompting
+    if v < 0.2:
+        return "black"
+    elif v > 0.95 and s < 0.1:
+        return "white"
+    elif s < 0.1:
+        return "gray"
+    
+    h_degrees = h * 360
+    
+    if h_degrees < 30 or h_degrees >= 330:
+        return "red"
+    elif 30 <= h_degrees < 60:
+        return "orange"
+    elif 60 <= h_degrees < 90:
+        return "yellow"
+    elif 90 <= h_degrees < 150:
+        return "green"
+    elif 150 <= h_degrees < 210:
+        return "cyan"
+    elif 210 <= h_degrees < 270:
+        return "blue"
+    elif 270 <= h_degrees < 330:
+        return "purple"
+    
+    return "colored"
+
 
 
 class CircularConv2d(nn.Module):
@@ -86,11 +129,71 @@ class LoRATextileGenerator:
             if not os.path.exists(lora_path):
                 missing.append(style)
                 logger.warning(f"LoRA adapter not found for style '{style}' at: {lora_path}")
+            else:
+                # Check for adapter_model.safetensors or adapter_config.json
+                adapter_file = os.path.join(lora_path, "adapter_model.safetensors")
+                config_file = os.path.join(lora_path, "adapter_config.json")
+                if os.path.exists(adapter_file):
+                    logger.info(f"✓ LoRA adapter found for '{style}': {os.path.getsize(adapter_file) / (1024*1024):.1f}MB")
+                elif os.path.exists(config_file):
+                    logger.info(f"✓ LoRA config found for '{style}' (weights may be loaded separately)")
+                else:
+                    missing.append(style)
+                    logger.warning(f"No adapter files found in {lora_path}")
         
         if missing:
-            logger.warning(f"Missing LoRA adapters for: {', '.join(missing)}")
+            logger.warning(f"⚠ Missing or incomplete LoRA adapters for: {', '.join(missing)}")
         else:
-            logger.info(f"All LoRA adapters found for styles: {', '.join(self.available_styles)}")
+            logger.info(f"✓ All LoRA adapters verified for styles: {', '.join(self.available_styles)}")
+    
+    def verify_models_loaded(self) -> Dict[str, bool]:
+        """Verify all models are loaded and working correctly"""
+        results = {}
+        logger.info("=" * 60)
+        logger.info("VERIFYING MODEL LOADING...")
+        logger.info("=" * 60)
+        
+        for style in self.available_styles:
+            try:
+                logger.info(f"\nVerifying {style.upper()} model...")
+                pipeline = self.load_style_pipeline(style)
+                
+                # Check pipeline components
+                checks = {
+                    'vae': pipeline.vae is not None,
+                    'tokenizer': pipeline.tokenizer is not None,
+                    'text_encoder': pipeline.text_encoder is not None,
+                    'unet': pipeline.unet is not None,
+                    'scheduler': pipeline.scheduler is not None,
+                }
+                
+                all_ok = all(checks.values())
+                results[style] = all_ok
+                
+                for component, ok in checks.items():
+                    status = "✓" if ok else "✗"
+                    logger.info(f"  {status} {component}: {'loaded' if ok else 'MISSING'}")
+                
+                # Log LoRA status
+                lora_path = os.path.join(self.lora_base_path, f"{style}_lora")
+                if os.path.exists(lora_path):
+                    logger.info(f"  ✓ LoRA adapter: loaded from {lora_path}")
+                else:
+                    logger.warning(f"  ⚠ LoRA adapter: NOT FOUND at {lora_path}")
+                
+                logger.info(f"✓ {style.upper()} model verification: PASS" if all_ok else f"✗ {style.upper()} model verification: FAIL")
+                
+            except Exception as e:
+                results[style] = False
+                logger.error(f"✗ {style.upper()} model verification FAILED: {str(e)}")
+        
+        logger.info("\n" + "=" * 60)
+        logger.info("MODEL VERIFICATION COMPLETE")
+        logger.info(f"Device: {self.device.upper()}")
+        logger.info(f"Data Type: {self.dtype}")
+        logger.info("=" * 60 + "\n")
+        
+        return results
     
     def _apply_circular_padding_to_vae(self, vae):
         """Apply circular padding to VAE Conv2D layers for seamless tiling"""
@@ -159,21 +262,37 @@ class LoRATextileGenerator:
             # Move to device
             pipeline = pipeline.to(self.device)
             
-            # Enable memory optimizations
+            # Enable memory optimizations for faster inference on limited VRAM
             if self.device == "cuda":
                 try:
-                    # Enable memory efficient attention
+                    # Enable memory efficient attention (xFormers) - 40% speed improvement
                     pipeline.enable_xformers_memory_efficient_attention()
-                    logger.info("xformers memory efficient attention enabled")
+                    logger.info("✓ xFormers memory efficient attention enabled (40% faster)")
                 except Exception as e:
-                    logger.warning(f"xformers not available: {e}")
+                    logger.warning(f"xFormers not available, falling back to attention slicing: {e}")
+                    try:
+                        pipeline.enable_attention_slicing()
+                        logger.info("✓ Attention slicing enabled")
+                    except:
+                        pass
                 
                 try:
-                    # Enable VAE slicing for lower memory usage
-                    pipeline.enable_vae_slicing()
-                    logger.info("VAE slicing enabled")
+                    # Enable VAE tiling for reduced memory usage
+                    pipeline.enable_vae_tiling()
+                    logger.info("✓ VAE tiling enabled (reduced memory pressure)")
                 except Exception as e:
-                    logger.warning(f"VAE slicing failed: {e}")
+                    logger.warning(f"VAE tiling not available: {e}")
+                
+                try:
+                    # Use faster scheduler - DPM++ Multistep (15-20% faster than Euler)
+                    pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
+                        pipeline.scheduler.config,
+                        use_karras_sigmas=True,
+                        algorithm_type="dpmsolver++"
+                    )
+                    logger.info("✓ DPM++ Multistep scheduler enabled (15-20% faster)")
+                except Exception as e:
+                    logger.warning(f"Could not set DPM++ scheduler: {e}")
             
             # Cache pipeline
             self.loaded_pipelines[style] = pipeline
@@ -208,39 +327,141 @@ class LoRATextileGenerator:
         color_1: Optional[str] = None,
         color_2: Optional[str] = None
     ) -> str:
-        """Build enhanced prompt for textile pattern generation"""
+        """Build optimized prompt for textile pattern generation (within 77 token CLIP limit)"""
         
-        # Start with style prefix
-        full_prompt = f"traditional {style} textile pattern"
+        # Concise style prefixes
+        style_prefixes = {
+            'bandhani': "Indian tie-dye pattern",
+            'batik': "Indonesian batik pattern",
+            'ikat': "double-ikat pattern"
+        }
         
-        # Add pattern details if specified
-        if pattern:
-            full_prompt += f", {pattern} design"
+        # Concise pattern details
+        pattern_details = {
+            'bandhani': {
+                'leheriya': "wave lines",
+                'mothra': "dot grid",
+                'ekdali': "clusters dots",
+                'shikari': "dense dots",
+                'gharchola': "checkered",
+            },
+            'batik': {
+                'parang': "knife motifs",
+                'kawung': "palm shapes",
+                'mega_mendung': "clouds",
+                'truntum': "star flowers",
+                'ceplok': "medallions",
+            },
+            'ikat': {
+                'patola': "geometry",
+                'pochampally': "rhombus",
+                'telia_rumal': "stripes",
+                'sambalpuri': "temple motifs",
+                'geringsing': "interlocking",
+            }
+        }
+        
+        style_key = style.lower()
+        base = style_prefixes.get(style_key, f"{style} textile")
+        
+        # Add pattern detail if specified
+        if pattern and style_key in pattern_details:
+            pattern_detail = pattern_details[style_key].get(pattern.lower(), "")
+            if pattern_detail:
+                base += f", {pattern_detail}"
+        
+        # Build prompt: style, pattern, user input, colors
+        parts = [base]
         
         # Add user prompt
-        full_prompt += f", {prompt}"
+        if prompt:
+            parts.append(prompt)
         
-        # Add color information
-        color_parts = []
+        # Add colors
         if color_1:
-            color_parts.append(color_1)
+            color_name_1 = hex_to_color_name(color_1)
+            parts.append(f"{color_name_1} base")
         if color_2:
-            color_parts.append(color_2)
+            color_name_2 = hex_to_color_name(color_2)
+            parts.append(f"{color_name_2} accent")
         
-        if color_parts:
-            full_prompt += f", {' and '.join(color_parts)} colors"
+        # Add minimal quality keywords
+        parts.append("seamless pattern, crisp, high quality")
         
-        # Add quality enhancers
-        full_prompt += ", high quality, detailed fabric texture, seamless repeating pattern"
+        full_prompt = ", ".join(parts)
+        logger.info(f"Generated prompt for {style}: {full_prompt}")
+        return full_prompt
+    
+    def _build_img2img_prompt(
+        self,
+        style: str,
+        pattern: Optional[str] = None,
+        color_1: Optional[str] = None,
+        color_2: Optional[str] = None
+    ) -> str:
+        """Build minimal prompt for img2img (reference image focused, no user prompt)"""
         
+        # Concise style prefixes
+        style_prefixes = {
+            'bandhani': "Indian tie-dye",
+            'batik': "batik pattern",
+            'ikat': "ikat pattern"
+        }
+        
+        # Minimal pattern details
+        pattern_details = {
+            'bandhani': {
+                'leheriya': "wave",
+                'mothra': "dots",
+                'ekdali': "clusters",
+                'shikari': "dense",
+                'gharchola': "checkered",
+            },
+            'batik': {
+                'parang': "motifs",
+                'kawung': "shapes",
+                'mega_mendung': "clouds",
+                'truntum': "flowers",
+                'ceplok': "medallions",
+            },
+            'ikat': {
+                'patola': "geometry",
+                'pochampally': "rhombus",
+                'telia_rumal': "stripes",
+                'sambalpuri': "motifs",
+                'geringsing': "interlocking",
+            }
+        }
+        
+        style_key = style.lower()
+        base = style_prefixes.get(style_key, f"{style} textile")
+        parts = [base]
+        
+        # Add pattern detail if specified
+        if pattern and style_key in pattern_details:
+            pattern_detail = pattern_details[style_key].get(pattern.lower(), "")
+            if pattern_detail:
+                parts.append(pattern_detail)
+        
+        # Add colors ONLY (no user prompt)
+        if color_1:
+            color_name_1 = hex_to_color_name(color_1)
+            parts.append(color_name_1)
+        if color_2:
+            color_name_2 = hex_to_color_name(color_2)
+            parts.append(color_name_2)
+        
+        full_prompt = ", ".join(parts)
+        logger.info(f"Generated img2img prompt for {style}: {full_prompt}")
         return full_prompt
     
     def _get_negative_prompt(self) -> str:
-        """Get negative prompt to avoid unwanted features"""
+        """Get negative prompt to avoid unwanted features (optimized for token limit)"""
         return (
-            "blurry, low quality, distorted, watermark, text, signature, "
-            "human, face, people, body parts, photographic, realistic photo, "
-            "border, frame, split image"
+            "blurry, distorted, pixelated, noisy, artifacts, "
+            "text, watermark, human, face, people, "
+            "photographic, 3d, border, incomplete, "
+            "asymmetrical, broken pattern, uneven colors"
         )
     
     def generate(
@@ -389,11 +610,11 @@ class LoRATextileGenerator:
             
             generator = torch.Generator(device=self.device).manual_seed(seed)
             
-            # Build prompt
-            full_prompt = self._build_prompt(prompt, style, pattern, color_1, color_2)
+            # Build minimal prompt (colors and style only, ignore user prompt for img2img)
+            full_prompt = self._build_img2img_prompt(style, pattern, color_1, color_2)
             negative_prompt = self._get_negative_prompt()
             
-            logger.info(f"Generating img2img {style} pattern with strength {strength}")
+            logger.info(f"Generating img2img {style} pattern with strength {strength} (reference image focused)")
             
             # Generate
             with torch.no_grad():

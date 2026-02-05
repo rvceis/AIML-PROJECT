@@ -25,7 +25,7 @@ export function Hero() {
             className="text-lg text-slate-600 dark:text-slate-300 w-full"
           >
             Blend artisanal styles like Bandhani, Ikat, Block Print, and Paisley into pixel-perfect, tileable fabrics.
-            Guided by your prompts, rendered by SDXL LoRA.
+            Guided by your prompts, rendered by STYLE-GAN.
           </motion.p>
 
           <motion.div

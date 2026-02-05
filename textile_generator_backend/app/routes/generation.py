@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 from threading import Thread
 import logging
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,108 @@ def get_styles():
     return jsonify({
         'styles': current_app.config['SUPPORTED_STYLES']
     }), 200
+
+
+@generation_bp.route('/verify-models', methods=['GET'])
+def verify_models():
+    """Verify all models are loaded and working correctly
+    
+    Returns:
+        200: { 
+            status: str,
+            models: {
+                bandhani: bool,
+                batik: bool,
+                ikat: bool
+            }
+        }
+    """
+    try:
+        generator = get_generator()
+        model_status = generator.verify_models_loaded()
+        
+        all_ok = all(model_status.values())
+        status = 'ok' if all_ok else 'warning'
+        
+        return jsonify({
+            'status': status,
+            'models': model_status,
+            'device': generator.device.upper(),
+            'dtype': str(generator.dtype)
+        }), 200
+    except Exception as e:
+        logger.error(f"Model verification failed: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@generation_bp.route('/gallery', methods=['GET'])
+def get_gallery():
+    """Get all generated images from uploads folder
+    
+    Query Parameters:
+        - limit (int, optional): Number of images to return (default: 50)
+        - offset (int, optional): Pagination offset (default: 0)
+    
+    Returns:
+        200: { 
+            images: [
+                {
+                    filename: str,
+                    url: str,
+                    created_at: datetime,
+                    size_bytes: int
+                }
+            ],
+            total: int
+        }
+    """
+    try:
+        upload_folder = current_app.config['UPLOAD_FOLDER']
+        limit = request.args.get('limit', 50, type=int)
+        offset = request.args.get('offset', 0, type=int)
+        
+        # Get all image files (png, jpg, jpeg, webp)
+        image_extensions = {'.png', '.jpg', '.jpeg', '.webp', '.gif'}
+        image_files = []
+        
+        if os.path.exists(upload_folder):
+            for filename in os.listdir(upload_folder):
+                filepath = os.path.join(upload_folder, filename)
+                # Only include files (not directories)
+                if os.path.isfile(filepath):
+                    file_ext = Path(filename).suffix.lower()
+                    if file_ext in image_extensions:
+                        try:
+                            stat = os.stat(filepath)
+                            image_files.append({
+                                'filename': filename,
+                                'url': f'/api/images/{filename}',
+                                'created_at': datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                                'size_bytes': stat.st_size
+                            })
+                        except Exception as e:
+                            logger.warning(f"Failed to stat file {filename}: {e}")
+        
+        # Sort by creation time (newest first)
+        image_files.sort(key=lambda x: x['created_at'], reverse=True)
+        
+        # Apply pagination
+        total = len(image_files)
+        paginated_images = image_files[offset:offset + limit]
+        
+        return jsonify({
+            'images': paginated_images,
+            'total': total,
+            'limit': limit,
+            'offset': offset
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Failed to get gallery: {str(e)}")
+        return jsonify({'error': f'Failed to get gallery: {str(e)}'}), 500
 
 
 @generation_bp.route('/generate', methods=['POST'])
@@ -184,6 +287,7 @@ def _process_generation(app, generation_id, prompt, style, pattern, color_1, col
                         color_2=color_2,
                         strength=strength,
                         num_inference_steps=num_inference_steps,
+                        guidance_scale=guidance_scale,
                         seed=seed
                     )
                 except Exception as e:

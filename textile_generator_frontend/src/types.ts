@@ -1,8 +1,8 @@
 export type StyleId = 'bandhani' | 'batik' | 'ikat';
 
-export type BandhaniPattern = 'leheriya' | 'shikari' | 'mothra' | 'rajasthani_tie' | 'mandala';
-export type BatikPattern = 'geometric_batik' | 'floral_batik' | 'traditional_batik' | 'wax_resist' | 'crackle';
-export type IkatPattern = 'striped_ikat' | 'diamond_ikat' | 'blurred_motif' | 'traditional_ikat' | 'woven_pattern';
+export type BandhaniPattern = 'leheriya' | 'mothra' | 'ekdali' | 'shikari' | 'gharchola';
+export type BatikPattern = 'parang' | 'kawung' | 'mega_mendung' | 'truntum' | 'ceplok';
+export type IkatPattern = 'patola' | 'pochampally' | 'telia_rumal' | 'sambalpuri' | 'geringsing';
 
 export type PatternId = BandhaniPattern | BatikPattern | IkatPattern;
 

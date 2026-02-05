@@ -75,6 +75,11 @@ export async function getHistory(limit = 10, offset = 0): Promise<GenerationStat
   return data.generations;
 }
 
+export async function getGallery(limit = 50, offset = 0): Promise<Array<{ filename: string; url: string; created_at: string; size_bytes: number }>> {
+  const { data } = await api.get('/api/gallery', { params: { limit, offset } });
+  return data.images;
+}
+
 export async function login(username: string, password: string): Promise<string> {
   const { data } = await api.post('/api/login', { username, password });
   return data.access_token;

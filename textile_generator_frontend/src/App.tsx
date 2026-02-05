@@ -17,25 +17,25 @@ import type { GenerationStatus, PatternId, PatternOption, StyleId } from './type
 
 const PATTERN_OPTIONS: Record<StyleId, PatternOption[]> = {
   bandhani: [
-    { id: 'leheriya' as PatternId, name: 'Leheriya', description: 'Diagonal wavy lines' },
-    { id: 'shikari' as PatternId, name: 'Shikari', description: 'Hunting pattern' },
-    { id: 'mothra' as PatternId, name: 'Mothra', description: 'Circular motifs' },
-    { id: 'rajasthani_tie' as PatternId, name: 'Rajasthani Tie', description: 'Traditional tie' },
-    { id: 'mandala' as PatternId, name: 'Mandala', description: 'Circular mandala' },
+    { id: 'leheriya' as PatternId, name: 'Leheriya', description: 'Diagonal wave resist' },
+    { id: 'mothra' as PatternId, name: 'Mothra', description: 'Small dot grid' },
+    { id: 'ekdali' as PatternId, name: 'Ekdali', description: 'Single dot clusters' },
+    { id: 'shikari' as PatternId, name: 'Shikari', description: 'Dense dotted fields' },
+    { id: 'gharchola' as PatternId, name: 'Gharchola', description: 'Checkered bandhani grid' },
   ],
   batik: [
-    { id: 'geometric_batik' as PatternId, name: 'Geometric', description: 'Geometric patterns' },
-    { id: 'floral_batik' as PatternId, name: 'Floral', description: 'Floral designs' },
-    { id: 'traditional_batik' as PatternId, name: 'Traditional', description: 'Indonesian batik' },
-    { id: 'wax_resist' as PatternId, name: 'Wax Resist', description: 'Wax resist' },
-    { id: 'crackle' as PatternId, name: 'Crackle', description: 'Crackle effect' },
+    { id: 'parang' as PatternId, name: 'Parang', description: 'Diagonal knife motifs' },
+    { id: 'kawung' as PatternId, name: 'Kawung', description: 'Oval palm-fruit shapes' },
+    { id: 'mega_mendung' as PatternId, name: 'Mega Mendung', description: 'Layered cloud forms' },
+    { id: 'truntum' as PatternId, name: 'Truntum', description: 'Star-flower repeats' },
+    { id: 'ceplok' as PatternId, name: 'Ceplok', description: 'Geometric medallions' },
   ],
   ikat: [
-    { id: 'striped_ikat' as PatternId, name: 'Striped', description: 'Striped pattern' },
-    { id: 'diamond_ikat' as PatternId, name: 'Diamond', description: 'Diamond motifs' },
-    { id: 'blurred_motif' as PatternId, name: 'Blurred Motif', description: 'Blurred edges' },
-    { id: 'traditional_ikat' as PatternId, name: 'Traditional', description: 'Traditional weave' },
-    { id: 'woven_pattern' as PatternId, name: 'Woven Pattern', description: 'Woven patterns' },
+    { id: 'patola' as PatternId, name: 'Patola', description: 'Double-ikat geometrics' },
+    { id: 'pochampally' as PatternId, name: 'Pochampally', description: 'Rhombus checks' },
+    { id: 'telia_rumal' as PatternId, name: 'Telia Rumal', description: 'Oil-resist stripes' },
+    { id: 'sambalpuri' as PatternId, name: 'Sambalpuri', description: 'Traditional ikat motifs' },
+    { id: 'geringsing' as PatternId, name: 'Geringsing', description: 'Balinese double-ikat' },
   ],
 };
 
@@ -49,11 +49,13 @@ function AppContent() {
   const [pattern, setPattern] = useState<PatternId>('leheriya');
   const [primaryColor, setPrimaryColor] = useState('#6366F1');
   const [secondaryColor, setSecondaryColor] = useState('#EC4899');
-  const [steps, setSteps] = useState(10);
+  const [steps, setSteps] = useState(15);
   const [guidance, setGuidance] = useState(7.5);
   const [seed, setSeed] = useState<number | null>(null);
   const [generationId, setGenerationId] = useState<number | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
+  const [referenceImage, setReferenceImage] = useState<string | null>(null);
+  const [imgStrength, setImgStrength] = useState(0.7);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
 
   const { status: wsStatus, imageUrl: wsImageUrl, error: wsError } = useGenerationStatus(
@@ -146,6 +148,8 @@ function AppContent() {
         seed,
         num_inference_steps: safeSteps,
         guidance_scale: guidance,
+        reference_image: referenceImage || undefined,
+        strength: referenceImage ? imgStrength : undefined,
       });
       console.log('[App] ✅ Generate result:', result);
       if (result && result.id) {
@@ -190,6 +194,10 @@ function AppContent() {
                 onGenerate={onGenerate}
                 disableGenerate={!prompt || prompt.length < 3}
                 stylesLoaded={styles.length > 0}
+                referenceImage={referenceImage}
+                imgStrength={imgStrength}
+                onReferenceImage={setReferenceImage}
+                onImgStrength={setImgStrength}
               />
               <Preview previewUrl={previewImageUrl} status={previewStatus} loading={loading} />
             </div>

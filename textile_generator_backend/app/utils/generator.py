@@ -408,23 +408,23 @@ class TextileGenerator:
         
         pattern_descriptions = {
             # Bandhani patterns
-            "leheriya": "diagonal wavy lines, flowing movement",
-            "shikari": "hunting pattern, wildlife inspired",
-            "mothra": "circular motifs and circles",
-            "rajasthani_tie": "traditional Rajasthani tie variations",
-            "mandala": "circular mandala design, spiritual geometry",
+            "leheriya": "diagonal wave resist, flowing movement",
+            "mothra": "small dot grid, clustered circles",
+            "ekdali": "single dot clusters, minimalist dots",
+            "shikari": "dense dotted fields, textured layout",
+            "gharchola": "checkered bandhani grid, ceremonial layout",
             # Batik patterns
-            "geometric_batik": "geometric wax patterns, angular shapes",
-            "floral_batik": "floral wax designs, botanical themes",
-            "traditional_batik": "traditional Indonesian batik, classic motifs",
-            "wax_resist": "contemporary wax resist technique",
-            "crackle": "crackle effect pattern, aged texture",
+            "parang": "diagonal knife motifs, rhythmic repeats",
+            "kawung": "oval palm-fruit shapes, symmetric lattice",
+            "mega_mendung": "layered cloud forms, flowing contours",
+            "truntum": "star-flower repeats, delicate motifs",
+            "ceplok": "geometric medallions, structured layout",
             # Ikat patterns
-            "striped_ikat": "striped ikat pattern, linear design",
-            "diamond_ikat": "diamond shaped motifs, geometric layout",
-            "blurred_motif": "characteristic blurred edges, resist dye effect",
-            "traditional_ikat": "traditional ikat weave, classic structure",
-            "woven_pattern": "woven ikat patterns, thread interactions",
+            "patola": "double-ikat geometrics, rich symmetry",
+            "pochampally": "rhombus checks, bold geometry",
+            "telia_rumal": "oil-resist stripes, linear motifs",
+            "sambalpuri": "traditional ikat motifs, rhythmic repeats",
+            "geringsing": "balinese double-ikat, intricate geometrics",
         }
         
         style_desc = style_descriptions.get(style, "traditional textile pattern")
